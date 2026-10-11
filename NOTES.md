@@ -1416,7 +1416,7 @@ dintr-un nucleu în timpul jocului). Valve publică un client compilat pentru AR
   puntea aplicației 59%. Lipsește UDisks2 („Failed to initialize storage device manager”): de văzut la
   instalarea jocurilor.
 
-## N-052 · Idei preluate din DroidDeck; așteptările KGSL cu timp 0  🧪 (compilat pe PC, 2026-10-11; telefon: netestat)
+## N-052 · Idei preluate din DroidDeck; așteptările KGSL cu timp 0  ✅ (Realme GT, 2026-10-11)
 - DroidDeck (github.com/Droid-Deck/DroidDeck, GPL-3.0) rulează clientul Steam ARM64 de la Valve prin proot +
   gamescope, cu Proton ARM64 și FEX-ul Valve. fexdroid rămâne MIT: preluăm idei, nu cod.
 - **Patch Mesa 0008:** KGSL citește `timeout = 0` la `IOCTL_KGSL_DEVICE_WAITTIMESTAMP_CTXTID` ca „fără limită”.
@@ -1424,4 +1424,8 @@ dintr-un nucleu în timpul jocului). Valve publică un client compilat pentru AR
   aștepta până termina GPU-ul (procesorul și GPU-ul lucrau pe rând). Acum o întrebare cu timp 0 citește
   timestamp-ul RETIRED (`IOCTL_KGSL_CMDSTREAM_READTIMESTAMP_CTXTID`) și compară cu wrap-around.
   DroidDeck/Bannerlator raportează 614 → 4335 fps într-un demo D3D12 (limitat de GPU, nu un joc).
-  `FEXDROID_NO_KGSL_POLL=1` (în `files/session-env.txt`) pune la loc comportamentul vechi, pentru A/B. De măsurat pe Realme: replay-ul Dota, mai multe porniri cu și fără patch (N-031: 20–45 ms/cadru în acest ioctl).
+  `FEXDROID_NO_KGSL_POLL=1` (în `files/session-env.txt`) pune la loc comportamentul vechi, pentru A/B. ✅ **Măsurat pe Realme GT (2026-10-11)**, replay-ul Dota 9020144444 la același moment, 3+3 porniri ABBA cu
+  `tools/fxctl` (`dota-kgsl-poll-ab.json`), telefonul la priză și cald (baterie 46 °C, deci frânat termic):
+  cu patch **16,9 fps** (16,8 / 16,9 / 17,0), fără patch **15,8 fps** (15,4 / 15,5 / 16,5). **+7%**, constant
+  (abaterea cu patch 0,1). Mic, dar real; câștigul mare din demo-ul D3D12 nu se vede în Dota, care e limitat
+  de firul principal și de frânarea termică (N-034).
