@@ -113,6 +113,14 @@ class Device:
         if game not in GAMES:
             raise DeviceError(f"unknown game {game}; one of {', '.join(GAMES)}")
         self.shell(f"am start -n {ACTIVITY} --es action {game}")
+        # Seen on the Realme: an app left open on Acasă sometimes ignores the intent (onNewIntent)
+        # and stays Idle. Start it fresh in that case.
+        for _ in range(15):
+            time.sleep(1)
+            if self.control("status").get("state") != "Idle":
+                return
+        self.shell(f"am force-stop {PKG}")
+        self.shell(f"am start -n {ACTIVITY} --es action {game}")
 
     def write_app_file(self, rel_path, text):
         """files/<rel_path> in the app's data, through /data/local/tmp (run-as reads it there)."""
