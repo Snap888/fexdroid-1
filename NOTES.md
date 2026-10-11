@@ -1429,3 +1429,13 @@ dintr-un nucleu în timpul jocului). Valve publică un client compilat pentru AR
   cu patch **16,9 fps** (16,8 / 16,9 / 17,0), fără patch **15,8 fps** (15,4 / 15,5 / 16,5). **+7%**, constant
   (abaterea cu patch 0,1). Mic, dar real; câștigul mare din demo-ul D3D12 nu se vede în Dota, care e limitat
   de firul principal și de frânarea termică (N-034).
+
+## N-056 · Copierea cadrelor spre ecran: un rând dintr-o bucată, cu NEON  ✅ (Realme GT, 2026-10-11)
+- `display_bridge.c` copia pixel cu pixel. Pe drumul „cadre direct de la joc” fiecare pixel avea și verificări de
+  margini pe 64 de biți, așa că compilatorul nu putea folosi instrucțiuni vectoriale. Acum marginile se calculează o
+  dată pe rând, iar copia (cu schimbul R↔B și alfa opac) se face cu `vld4q_u8`/`vst4q_u8`, câte 16 pixeli.
+- Măsurat pe Realme (program de test separat, 1600×720, un nucleu mare): drumul direct **2,4 → 0,9 ms pe cadru**.
+  Drumul prin Xvfb era deja vectorizat de compilator: 1,1 ms și înainte, și acum. Același rezultat pixel cu pixel
+  (2000 de rânduri aleatoare, 0 diferențe).
+- În joc înseamnă ~3% dintr-un nucleu la 20 fps, pe alt fir decât firul principal al lui Dota: efect mic asupra
+  cadrelor. Pasul C din `docs/experiments/zero-copy-design.md` (ramura `dd-zero-copy-design`).
