@@ -27,7 +27,6 @@
     <string name="check_pages_bad">%1$d KB: FEX funcționează doar cu pagini de 4 KB.</string>
     <string name="check_phantom">Limita de procese copil</string>
     <string name="check_phantom_none">Nu există înainte de Android 12.</string>
-    <string name="check_phantom_off">Dezactivată (%1$d)</string>
     <string name="check_phantom_on">Android poate opri Steam (limită %1$d). Din Opțiuni dezvoltator › „Dezactivează restricțiile pentru procesele copil” sau pe PC: adb shell device_config put activity_manager max_phantom_processes 2147483647</string>
     <string name="check_storage">Spațiu liber</string>
     <string name="check_storage_low">%1$d GB: mediul Linux și Steam au nevoie de ~5 GB, jocurile de zeci de GB.</string>
@@ -217,4 +216,43 @@
     <string name="update_mismatch">Fișierul descărcat nu se potrivește cu cel publicat. Încearcă din nou.</string>
     <string name="update_other_key">Versiunea instalată e semnată cu altă cheie decât cea nouă, așa că Android nu o poate înlocui. O singură dată: dezinstalează aplicația și instaleaz-o din nou de pe GitHub. (%1$s)</string>
     <string name="update_stop_game_first">Oprește jocul înainte de actualizare.</string>
+
+    <!-- PhantomFix: dezactivarea limitei de procese copil prin Depanarea wireless -->
+    <string name="phantom_gate_title">Android poate opri Steam</string>
+    <string name="phantom_gate_text">Android 12 și mai noi opresc procesele copil ale unei aplicații peste o limită (32). Steam pornește multe, așa că se poate închide singur, fără nicio eroare. fexdroid poate dezactiva limita, o singură dată, fără PC.</string>
+    <string name="phantom_gate_unknown">Pe Android 12 fexdroid nu poate citi această setare. Dacă Steam se închide singur, dezactivează limita.</string>
+    <string name="phantom_auto_title">Repară automat</string>
+    <string name="phantom_auto_step1">1. Conectează-te la Wi-Fi. Apasă Începe: se deschid Opțiunile dezvoltator; pornește acolo Depanarea wireless (Wireless debugging) și permite-o în această rețea.</string>
+    <string name="phantom_auto_step1_devoff">Opțiunile dezvoltator sunt oprite: Începe deschide Despre telefon; atinge de 7 ori Numărul versiunii, apoi revino și apasă din nou Începe.</string>
+    <string name="phantom_auto_step2">2. Intră în Depanarea wireless › Asociază dispozitivul cu un cod de asociere. Trage în jos bara de notificări și scrie codul de 6 cifre în notificarea fexdroid, fără să închizi fereastra cu codul.</string>
+    <string name="phantom_start_fix">Începe</string>
+    <string name="phantom_waiting">Aștept codul în notificare…</string>
+    <string name="phantom_waiting_port">Am găsit fereastra de asociere (portul %1$d). Aștept codul…</string>
+    <string name="phantom_manual_entry">Sau scrie aici codul (și portul de după două puncte), cu ecranul împărțit:</string>
+    <string name="phantom_code_label">Codul de asociere</string>
+    <string name="phantom_port_label">Port (opțional)</string>
+    <string name="phantom_pair_button">Asociază</string>
+    <string name="phantom_manual_title">Manual</string>
+    <string name="phantom_manual_toggle">Android 14 și mai noi: Opțiuni dezvoltator › Dezactivează restricțiile pentru procesele copil.</string>
+    <string name="phantom_manual_pc">De pe un PC cu adb:</string>
+    <string name="phantom_dont_ask">Nu mai întreba</string>
+    <string name="phantom_start_anyway">Pornește Steam oricum</string>
+    <string name="phantom_start_now">Pornește Steam</string>
+    <string name="phantom_close">Închide</string>
+    <string name="phantom_notifications_on">Pornește notificările</string>
+    <string name="phantom_notifications_off">Notificările fexdroid sunt oprite: scrie codul mai jos, cu ecranul împărțit între Setări și fexdroid.</string>
+    <string name="phantom_channel">Repararea limitei de procese</string>
+    <string name="phantom_notify_title">fexdroid: asociere cu Depanarea wireless</string>
+    <string name="phantom_notify_code">Scrie codul de 6 cifre din Setări › Depanare wireless › Asociază dispozitivul cu un cod de asociere. Lasă fereastra aceea deschisă.</string>
+    <string name="phantom_code_action">Introdu codul</string>
+    <string name="phantom_step_pairing">Asociez…</string>
+    <string name="phantom_step_connecting">Mă conectez…</string>
+    <string name="phantom_step_changing">Dezactivez limita…</string>
+    <string name="phantom_done">Gata: Android nu mai oprește procesele lui Steam.</string>
+    <string name="phantom_err_code">Codul nu a fost acceptat. Verifică-l și încearcă din nou (fereastra arată alt cod de fiecare dată când se deschide).</string>
+    <string name="phantom_err_code_format">Codul are 6 cifre.</string>
+    <string name="phantom_err_no_pairing">Nu am găsit fereastra de asociere. Deschide Asociază dispozitivul cu un cod de asociere și încearcă din nou, sau scrie portul ei în fexdroid.</string>
+    <string name="phantom_err_no_connect">Asocierea a reușit, dar nu găsesc conexiunea Depanării wireless. Verifică dacă e încă pornită și încearcă din nou.</string>
+    <string name="phantom_err_not_confirmed">Android nu a confirmat schimbarea (%1$s).</string>
+    <string name="check_phantom_switched_off">Dezactivată</string>
 </resources>

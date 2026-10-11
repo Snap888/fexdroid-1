@@ -1501,3 +1501,24 @@ Ideea din DroidDeck (`docs/agent-control.md`, `droiddeckctl`, scenarii JSON), sc
   și ascunde controllerul real jocurilor (`SDL_GAMECONTROLLER_IGNORE_DEVICES`), jocurile SDL nu-l mai văd; de
   verificat. SELinux ar putea refuza `connect()` între procesele aplicației pe un socket din `files/`; ambele părți
   rulează ca aceeași aplicație, deci nu ar trebui.
+
+## N-053 · Limita de procese copil reparată din aplicație, prin Depanarea wireless  ✅ emulator / 🧪 telefon (2026-10-11)
+- Idee din DroidDeck (GPL-3.0, fără cod copiat): aplicația se asociază cu propriul adbd prin Depanarea wireless
+  pe 127.0.0.1 și rulează ca utilizator shell `settings put global settings_enable_monitor_phantom_procs false`
+  (+ `device_config ... max_phantom_processes 2147483647`, singura cale pe Android 12).
+- Kadb respins: aduce spake2-java (GPL-3.0). Scris de la zero, MIT: `Spake2.kt` (SPAKE2 pe edwards25519 ca în
+  BoringSSL, inclusiv „password scalar hack”), `AdbWire.kt` (asociere: TLS 1.3 + 64 B exportați cu eticheta
+  `adb-label\0`, AES-128-GCM cu HKDF; conexiune: CNXN → STLS → TLS cu certificat client → `exec:`).
+  Conscrypt (Apache-2.0, +2,7 MB) dă exportul de cheie, ascuns în Conscrypt-ul din Android.
+- UI: dialog la „Pornește Steam” când limita e activă (și butonul „Repară automat” în Compatibilitate).
+  Codul se scrie într-o notificare (RemoteInput), ca fereastra cu codul din Setări să rămână deschisă; porturile
+  se găsesc prin mDNS (`_adb-tls-pairing._tcp`, `_adb-tls-connect._tcp`; `service.adb.tls.port` e interzis
+  aplicațiilor de SELinux). Câmpuri cod + port în aplicație pentru ecran împărțit. Depanarea wireless e oprită la
+  final dacă era oprită înainte. Setări deschise la rândul `toggle_adb_wireless` (cheia trebuie dată și în
+  `:settings:show_fragment_args`).
+- Verificat pe emulator API 34: userdebug (asociere de pe PC, test `AdbWireTest`, cod greșit respins, cod bun
+  acceptat) și **Play Store / build „user”, `ro.adb.secure=1`**: tot fluxul din aplicație (Opțiuni dezvoltator
+  oprite → Despre telefon → Depanare wireless → cod în notificare) a schimbat setarea (`false` /
+  `2147483647`) și a oprit Depanarea wireless. Pe Android 13+ cu targetSdk 28, permisiunea de notificări poate
+  lipsi: dialogul arată atunci butonul „Pornește notificările”.
+- Netestat pe telefon (Realme, Xiaomi, S26): ROM-uri cu Setări modificate (alte chei, alte texte), Android 12.

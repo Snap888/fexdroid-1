@@ -108,6 +108,18 @@ dependencies {
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.ui:ui")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.11.0")
+    // TLS 1.3 with the keying-material exporter that Wireless debugging pairing needs
+    // (AdbWire.kt); Android's own Conscrypt hides that call. Apache-2.0, see LICENSES.md.
+    implementation("org.conscrypt:conscrypt-android:2.7.0")
+
+    testImplementation("junit:junit:4.13.2")
+    // The same Conscrypt API on the PC's JVM, for AdbWire's tests.
+    testImplementation("org.conscrypt:conscrypt-openjdk-uber:2.7.0")
+}
+
+// Unit tests run on the PC's JVM: Conscrypt's Android build cannot load there.
+configurations.matching { it.name.endsWith("UnitTestRuntimeClasspath") }.configureEach {
+    exclude(group = "org.conscrypt", module = "conscrypt-android")
 }
 
 // For the release's description (.github/workflows/full-apk.yml).

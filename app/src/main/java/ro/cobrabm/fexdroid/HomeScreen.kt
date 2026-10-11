@@ -35,6 +35,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -45,6 +46,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.LifecycleResumeEffect
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
 /** Acasă: what is installed, and the two main actions (Steam / Dota 2 direct). */
@@ -57,6 +59,11 @@ fun HomeScreen(onOpenSettings: () -> Unit) {
     LifecycleResumeEffect(Unit) { refresh++; onPauseOrDispose { } }
     LaunchedEffect(refresh, GameSession.state, SteamRootfs.state is SteamRootfs.State.Done) {
         status = withContext(Dispatchers.IO) { runCatching { InstallStatus.check(env) }.getOrNull() }
+    }
+    val scope = rememberCoroutineScope()
+    var phantomGate by remember { mutableStateOf<PhantomFix.Status?>(null) }
+    phantomGate?.let { st ->
+        PhantomFixDialog(st, onStart = { phantomGate = null; GameSession.start(ctx, Game.STEAM) }, onDismiss = { phantomGate = null })
     }
 
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
@@ -93,7 +100,14 @@ fun HomeScreen(onOpenSettings: () -> Unit) {
                         else -> str(R.string.home_login_hint)
                     },
                     enabled = steamOk,
-                ) { GameSession.start(ctx, Game.STEAM) }
+                ) {
+                    // Android's child-process limit can kill Steam with no error: offer the fix first.
+                    scope.launch {
+                        val st = withContext(Dispatchers.IO) { PhantomFix.status(ctx) }
+                        if ((st == PhantomFix.Status.ON || st == PhantomFix.Status.UNKNOWN) && PhantomFix.askBeforeSteam(ctx)) phantomGate = st
+                        else GameSession.start(ctx, Game.STEAM)
+                    }
+                }
             }
             val dotaAction: @Composable (Boolean) -> Unit = { primary ->
                 BigAction(
@@ -260,9 +274,13 @@ private fun CompatibilityCard() {
     val ctx = LocalContext.current
     var items by remember { mutableStateOf<List<DeviceCheck.Item>?>(null) }
     var expanded by remember { mutableStateOf(false) }
-    LaunchedEffect(Unit) {
+    var phantom by remember { mutableStateOf(PhantomFix.Status.NOT_NEEDED) }
+    var phantomDialog by remember { mutableStateOf(false) }
+    LaunchedEffect(PhantomFix.state is PhantomFix.State.Done) {
         items = withContext(Dispatchers.IO) { runCatching { DeviceCheck.run(ctx) }.getOrNull() }
+        phantom = withContext(Dispatchers.IO) { PhantomFix.status(ctx) }
     }
+    if (phantomDialog) PhantomFixDialog(phantom, onStart = null, onDismiss = { phantomDialog = false })
     val list = items
     Card(colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainer)) {
         Column(Modifier.padding(vertical = 8.dp)) {
@@ -289,6 +307,8 @@ private fun CompatibilityCard() {
                 }
             }
             Row(Modifier.fillMaxWidth().padding(horizontal = 8.dp), horizontalArrangement = Arrangement.End) {
+                if (phantom == PhantomFix.Status.ON || phantom == PhantomFix.Status.UNKNOWN)
+                    TextButton(onClick = { phantomDialog = true }) { Text(str(R.string.phantom_auto_title)) }
                 TextButton(onClick = { expanded = !expanded }) { Text(if (expanded) str(R.string.home_less) else str(R.string.home_all_checks)) }
                 // The full report: these checks, the emulator self-tests and the last session's log.
                 TextButton(onClick = { shareSessionReport(ctx) }) { Text(str(R.string.home_send)) }
