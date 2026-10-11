@@ -1,0 +1,15 @@
+{
+  "name": "steam-smoke",
+  "description": "Starts the x86 Steam session and checks it gets to its window: state, process, window title, frames on screen. No input is sent.",
+  "repeat": 1,
+  "requires_charging": true,
+  "run": [
+    {"do": "stop_session"},
+    {"do": "start_session", "game": "steam"},
+    {"do": "wait", "until": {"state": "Running"}, "timeout": 120, "interval": 5},
+    {"do": "wait", "until": {"process": "steam"}, "timeout": 120, "interval": 5},
+    {"do": "wait", "until": {"focus": "Steam"}, "timeout": 300, "interval": 10},
+    {"do": "screenshot", "save": "steam"},
+    {"do": "measure_fps", "seconds": 20, "label": "steam-ui"}
+  ]
+}

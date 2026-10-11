@@ -10,6 +10,9 @@
 // (tools/fxpresent/fxpresent-proto.h): they are shown as they come and Xvfb's
 // framebuffer is looked at only while no such frames arrive.
 #include <android/log.h>
+#if defined(__aarch64__)
+#include <arm_neon.h>
+#endif
 #include <android/native_window_jni.h>
 #include <errno.h>
 #include <jni.h>
@@ -140,6 +143,34 @@ static void direct_accept(void) {
     LOGI("direct frames from process %d: %ux%u, %u bytes a row", hello.pid, hello.width, hello.height, hello.stride);
 }
 
+// X and Mesa's frames are B,G,R,X; the window wants R,G,B,A: swap R and B, alpha opaque.
+// Returns the 32-bit wrap-around sum of the source pixels (the change detection's row sum).
+static uint32_t copy_row(uint32_t *dst, const uint32_t *src, uint32_t n) {
+    uint32_t x = 0, sum = 0;
+#if defined(__aarch64__)
+    uint32x4_t acc = vdupq_n_u32(0);
+    const uint8x16_t opaque = vdupq_n_u8(0xff);
+    for (; x + 16 <= n; x += 16) {
+        uint8x16x4_t p = vld4q_u8((const uint8_t *)(src + x));
+        acc = vaddq_u32(acc, vaddq_u32(vaddq_u32(vld1q_u32(src + x), vld1q_u32(src + x + 4)),
+                                       vaddq_u32(vld1q_u32(src + x + 8), vld1q_u32(src + x + 12))));
+        uint8x16x4_t q = { { p.val[2], p.val[1], p.val[0], opaque } };
+        vst4q_u8((uint8_t *)(dst + x), q);
+    }
+    sum = vaddvq_u32(acc);
+#endif
+    for (; x < n; x++) {
+        const uint32_t p = src[x];
+        dst[x] = (p & 0xff00ff00u) | ((p & 0xffu) << 16) | ((p >> 16) & 0xffu) | 0xff000000u;
+        sum += p;
+    }
+    return sum;
+}
+
+static void fill_black(uint32_t *dst, uint32_t n) {
+    for (uint32_t x = 0; x < n; x++) dst[x] = 0xff000000u;
+}
+
 // The newest frame of the game, at its place on the X screen of w x ht. False: nothing shown.
 static bool direct_show(uint32_t w, uint32_t ht) {
     struct fxpresent_shared *sh = (struct fxpresent_shared *)g.mem;
@@ -160,14 +191,16 @@ static bool direct_show(uint32_t w, uint32_t ht) {
         for (uint32_t y = 0; y < rows; y++) {
             uint32_t *dst = (uint32_t *)buf.bits + (size_t)y * (size_t)buf.stride;
             const int64_t sy = (int64_t)y - fy;
-            if (sy < 0 || sy >= g.hello.height) { for (uint32_t x = 0; x < cols; x++) dst[x] = 0xff000000u; continue; }
+            if (sy < 0 || sy >= g.hello.height) { fill_black(dst, cols); continue; }
             const uint32_t *src = (const uint32_t *)(frame + (size_t)sy * g.hello.stride);
-            for (uint32_t x = 0; x < cols; x++) {
-                const int64_t sx = (int64_t)x - fx;
-                if (sx < 0 || sx >= g.hello.width) { dst[x] = 0xff000000u; continue; }
-                const uint32_t p = src[sx];
-                dst[x] = (p & 0xff00ff00u) | ((p & 0xffu) << 16) | ((p >> 16) & 0xffu) | 0xff000000u;
-            }
+            // Columns [x0, x1) of the window show the frame; the rest is black.
+            int64_t x0 = fx < 0 ? 0 : fx, x1 = (int64_t)fx + g.hello.width;
+            if (x0 > cols) x0 = cols;
+            if (x1 > cols) x1 = cols;
+            if (x1 < x0) x1 = x0;
+            fill_black(dst, (uint32_t)x0);
+            copy_row(dst + x0, src + (x0 - fx), (uint32_t)(x1 - x0));
+            fill_black(dst + x1, cols - (uint32_t)x1);
         }
         ANativeWindow_unlockAndPost(g.win);
         shown = true;
@@ -264,12 +297,8 @@ static void *render_loop(void *arg) {
                 uint32_t row = 0, x = 0;
                 if (y < rows) {
                     uint32_t *dst = (uint32_t *)buf.bits + (size_t)y * (size_t)buf.stride;
-                    // X server memory is B,G,R,X; the window wants R,G,B,X: swap R and B.
-                    for (; x < cols; x++) {
-                        uint32_t p = src[x];
-                        dst[x] = (p & 0xff00ff00u) | ((p & 0xffu) << 16) | ((p >> 16) & 0xffu) | 0xff000000u;
-                        row += p;
-                    }
+                    row = copy_row(dst, src, cols);
+                    x = cols;
                 }
                 for (; x < w; x++) row += src[x];
                 last_sum[y % LOOK_STEP] = last_sum[y % LOOK_STEP] * 31 + row;

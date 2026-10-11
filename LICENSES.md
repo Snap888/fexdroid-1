@@ -6,7 +6,7 @@ Orice conflict îl semnalez înainte de integrare.
 | Componentă | Licență | Cum o folosim | Obligații / riscuri |
 |---|---|---|---|
 | Cod propriu fexdroid | MIT (decis 2026-09-25) | — | — |
-| FEX-Emu | MIT | binar în rootfs ARM64, compilat de noi | păstrat textul licenței |
+| FEX-Emu | MIT | binar în rootfs ARM64, compilat de noi; patch-urile `patches/fex/` sunt ale noastre (0006: controllere, idee din DroidDeck, scris independent, fără cod copiat) | păstrat textul licenței |
 | Mesa (Turnip) | MIT (în mare parte; unele fișiere BSD/Khronos) | `libvulkan_freedreno.so` | păstrat textul licenței |
 | Patch-uri Mesa (`patches/mesa/`) | MIT | 0002–0004 = backport-uri neschimbate din Mesa `main` (commit-uri `c96b2e4c`, `35f59101`, `118ec7f4`); 0001 și 0005–0008 = patch-uri proprii fexdroid (0008: ideea din DroidDeck/Bannerlator „kgslpoll”, scrisă independent, fără cod copiat) | aceeași licență ca Mesa; niciun patch din repo-urile comunității (mesa-unified / Banners-Turnip) nu a fost preluat (vezi NOTES N-015) |
 | glibc | LGPL-2.1+ | în rootfs, posibil patch-uit | oferim sursa + patch-urile noastre |
@@ -19,6 +19,10 @@ Orice conflict îl semnalez înainte de integrare.
 | GameNative | GPL-3.0 | **doar referință** | nu copiem cod (GPL-3 ar contamina aplicația) |
 | AOSP bionic seccomp lists (`third_party/aosp-bionic-seccomp`) | Apache-2.0 | doar date de intrare pentru generatorul tabelului | păstrăm sursa și licența |
 | Steam / Dota 2 | proprietar Valve | **NU se include** | utilizatorul le instalează singur |
+| Conscrypt (`org.conscrypt:conscrypt-android`) | Apache-2.0 | bibliotecă în APK (`libconscrypt_jni.so`, ~2,7 MB): TLS 1.3 și exportul de material de cheie pentru asocierea Depanării wireless (`AdbWire.kt`) | păstrăm textul licenței și NOTICE |
+| AOSP adb (`packages/modules/adb`) și BoringSSL `spake25519.cc` | Apache-2.0 | **doar referință**: protocolul de asociere și SPAKE2 sunt rescrise în Kotlin (`AdbWire.kt`, `Spake2.kt`) | nu copiem cod; constantele M și N ale SPAKE2 sunt valori publice ale protocolului |
+| DroidDeck (`core/WirelessAdbFix.kt`, `PhantomProcessLimit.kt`) | GPL-3.0 | **doar referință** pentru idee (reparare prin Depanarea wireless pe 127.0.0.1) | nu copiem cod |
+| Kadb / spake2-java / libadb-android | Apache-2.0 / **GPL-3.0** / GPL-3.0 sau Apache-2.0 cu dependență LGPL-3.0 | **respinse**: Kadb aduce spake2-java (GPL-3.0), care ar face aplicația GPL | — |
 
 ## Conflicte semnalate până acum
 Niciunul, cu condiția ca proot și orice cod GPL să rămână binare separate și să nu copiem cod din GameNative.

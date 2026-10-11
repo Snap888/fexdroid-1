@@ -37,5 +37,14 @@
                 android:value="Runs a user-started Linux game (x86 emulation) while the app is in the background" />
         </service>
         <receiver android:name=".UpdateReceiver" android:exported="false" />
+        <!-- Test control over adb (tools/fxctl): DUMP is held by adb's shell, never by apps. -->
+        <provider
+            android:name=".ControlProvider"
+            android:authorities="${applicationId}.control"
+            android:exported="true"
+            android:permission="android.permission.DUMP" />
+
+        <!-- The Wireless debugging pairing code typed into PhantomFix's notification. -->
+        <receiver android:name=".PhantomFixReceiver" android:exported="false" />
     </application>
 </manifest>

@@ -115,6 +115,7 @@ object GameSession {
         appendLine("device: ${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}, " +
             "Android ${android.os.Build.VERSION.RELEASE} (API ${android.os.Build.VERSION.SDK_INT}), $soc")
         appendLine("screen: ${resolution.label}, state: $state")
+        appendLine("gamepads: ${Gamepads.describe()}")
         // Most useful first: messages get cut off on the way (chat apps, clipboards).
         if (state is SessionState.Running) append(runCatching { PerfSnapshot.take(env, resolution.label) }
             .getOrElse { "---- performance ----\nfailed: $it\n" })
@@ -284,6 +285,8 @@ object GameSession {
                             ", frames straight from the game ${if (AppSettings.directFrames) "on" else "off"}")
                     }
                     .onFailure { append("FEX: cannot write Config.json: $it") }
+                // Gamepads as /dev/input for FEX's guests (FEX patch 0006, NOTES N-054).
+                if (AppSettings.gamepads) Gamepads.start(ctx.applicationContext, File(env.root, "usr/share/fex-emu/fexdroid-input"), ::append)
                 if (!current()) return@thread xs.stopAll()
                 step(StartStep.DISPLAY)
                 if (!xs.startX()) return@thread fail(str(R.string.fail_display))
@@ -326,11 +329,29 @@ object GameSession {
         }
     }
 
+    /** The last [n] lines of the session log (tools/fxctl). */
+    fun logTail(n: Int): List<String> = synchronized(logLines) { logLines.toList() }.takeLast(n)
+
+    /**
+     * Hands a steam:// link (e.g. steam://rungameid/570) to the Steam client of the running
+     * session, as a second `steam.sh <link>` does on a PC (tools/fxctl). Null when handed over,
+     * else why not.
+     */
+    fun openSteamUrl(url: String): String? {
+        val s = state as? SessionState.Running ?: return "no session is running"
+        if (s.game != Game.STEAM) return "only the x86 Steam session takes links (this is ${s.game.tag})"
+        val xs = session ?: return "no session"
+        val ctx = appContext ?: return "no session"
+        xs.launch("steam-url", Game.STEAM.argv(LinuxEnv(ctx)) + listOf("--url", url))
+        return null
+    }
+
     /** Stops the game, audio and X server; back to Idle. */
     fun stop() {
         synchronized(this) { generation++ }
         ThreadTuner.stop()
         MemoryWatch.stop()
+        Gamepads.stop()
         DisplayBridge.stop()
         bridgeOn = false
         inputReady = false
