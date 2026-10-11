@@ -1532,3 +1532,107 @@ Ideea din DroidDeck (`docs/agent-control.md`, `droiddeckctl`, scenarii JSON), sc
   (2000 de rânduri aleatoare, 0 diferențe).
 - În joc înseamnă ~3% dintr-un nucleu la 20 fps, pe alt fir decât firul principal al lui Dota: efect mic asupra
   cadrelor. Pasul C din `docs/experiments/zero-copy-design.md` (ramura `dd-zero-copy-design`).
+
+## N-057 · GPU-ul la maxim rămâne; limita de 24 fps nu ajută  ✅ (Realme GT, 2026-10-11)
+Ipoteza: GPU-ul ținut la frecvența maximă (`TU_KGSL_PWR_CONSTRAINT=max`, N-037) încălzește telefonul și frânează
+procesorul, care e limita; după patch-ul Mesa `0008` ar fi putut conta mai puțin. Verificat cu
+`tools/fxctl/scenarios/dota-gpu-clock-fps-cap.json`: replay-ul Dota, 4 minute pe rundă, 4 variante × 2, ABBA,
+telefonul la priză (baterie 36–46 °C).
+
+| Variantă | fps (runde) | Limite procesor X1 / mari / mici (MHz, medie) |
+|---|---|---|
+| GPU la maxim (implicit) | **16,8** (18,0 · 15,6) | 1408–1415 / 1213–1429 / 1620–1804 |
+| GPU lăsat guvernorului | 13,3 (13,2 · 13,4) | 1305–1420 / 1209–1324 / 1612–1804 |
+| GPU la maxim + `fps_max 24` | 16,3 (16,4 · 16,3) | 1400–1420 / 1209–1228 / 1612–1644 |
+| GPU guvernor + `fps_max 24` | 13,0 (13,0 · 13,0) | 1305–1420 / 1209–1324 / 1612–1804 |
+
+- **Ipoteza nu se confirmă:** fără constrângere GPU-ul e cu ~21% mai lent, iar procesorul nu primește frecvențe mai
+  mari (limitele sunt aceleași în ambele variante). Setarea rămâne pornită implicit.
+- **`fps_max 24` nu schimbă nimic:** încins, jocul nu ajunge la 24, deci limita nu are ce tăia.
+- La rece prima rundă pornește de la 21–22 fps și coboară la 14–16 în 3–4 minute: căldura rămâne factorul principal.
+
+## N-058 · Așezarea firelor și glibc fără AVX, verificate în replay  ✅ (Realme GT, 2026-10-11)
+Cele două setări implicite fuseseră măsurate doar în scena demo (`ThreadTuner`, N-039) și pe un program de test
+(`GLIBC_TUNABLES`, N-047). Verificat în replay-ul Dota cu `tools/fxctl/scenarios/dota-tuner-libc-avx.json`:
+150 s pe rundă, 3 variante × 2, ABBA, telefonul la priză (baterie 42–46 °C). Variantele pot scrie acum fișiere în
+`files/` (`"files": {"tuner.txt": "off\n"}`); la variantele care nu le scriu fișierele sunt puse la loc.
+Verificat în timpul rundei „fără așezare”: toate firele jocului pe 0–7.
+
+| Variantă | fps (runda 1 · runda 2) | Limita nucleului X1 (MHz, medie) | fps la 1000 MHz |
+|---|---|---|---|
+| **implicit** (așezare `big`, glibc fără AVX) | **17,7 · 14,4** | 1338 · 1075 | 13,2 · 13,4 |
+| fără așezarea firelor (`tuner.txt` = `off`) | 16,7 · 13,1 | 1397 · 1121 | 12,0 · 11,7 |
+| glibc cu AVX (`GLIBC_TUNABLES=` gol) | 15,8 · 15,5 | 1282 · 1259 | 12,3 · 12,3 |
+
+- Pe medii brute diferențele sunt în zgomot (−7% și −2%), fiindcă limitele de frecvență au variat cu 25% între
+  runde. Raportate la limita nucleului X1 (unde rulează firul principal), ambele setări câștigă:
+  **așezarea firelor ~+12%**, **glibc fără AVX ~+8%**. În runda 2, varianta implicită a avut limita cea mai mică
+  (1075 MHz) și tot a dat mai multe cadre decât varianta fără așezare (1121 MHz).
+- Ambele rămân pornite implicit. Nu mai e nimic de luat din ele.
+- Lista de idei din 2026-10-11 (fixarea firului principal, căutarea de controllere a lui SDL, TSO pe bibliotecile
+  Source 2) era deja făcută: N-039, N-034/N-035, N-041.
+
+## N-059 · Memoria în replay: jocul are ~5,8 GB, alocatorul lui nu ține memorie degeaba  ✅ (Realme GT, 2026-10-11)
+- **Unde e memoria** (replay-ul Dota, `/proc/<pid>/smaps_rollup`, ca root): jocul 2,4 GB în RAM + 3,5 GB în swap;
+  clientul Steam x86 0,25 GB în RAM + 1,5 GB în swap (procesul web ~1,3 GB, clientul 0,3 GB); aplicația, Xvfb
+  și sunetul sub 0,1 GB. Memoria disponibilă ~1,1–1,3 GB, iar swap-ul se oprește la 1,0 GB liber din 7,5
+  în fiecare rundă: telefonul e la limită.
+- **În joc:** cinci zone anonime de câte 1 GiB țin ~4 GB. Sunt arenele alocatorului jocului: `libtier0` aduce
+  **mimalloc 2.5** („Low-level allocator: mimalloc”). Restul: memorie video KGSL 0,14 GB, FEX (cod tradus 0,22 GB,
+  tabele 0,08 GB, alocatorul lui 0,17 GB).
+- **Setările lui Valve** (`MIMALLOC_VERBOSE=1` în `session-env.txt`): `purge_delay` 1000 ms (implicit 10),
+  `arena_purge_mult` 10, `purge_decommits` 1, `arena_reserve` 1 GiB. Memoria eliberată se dă înapoi după 1 s
+  (10 s în arene), deci nu se adună.
+- **Verificat cu `tools/fxctl/scenarios/dota-mimalloc-purge.json`** (pas nou `memory` în fxctl: RAM și swap
+  ale procesului, memoria disponibilă), 2 × 2 runde, ABBA:
+
+  | Variantă | joc după încărcare (RAM + swap) | după 150 s de replay | fps |
+  |---|---|---|---|
+  | setările lui Valve | 5,50 · 5,53 GB | 5,81 · 5,83 GB | 16,9 · 15,9 |
+  | `MIMALLOC_PURGE_DELAY=0` | 5,48 · 5,56 GB | 5,77 · 5,80 GB | 16,5 · 16,8 |
+
+  Nicio diferență: memoria jocului e folosită de-adevăratelea. Rămâne cum a lăsat-o Valve.
+- Ce se mai poate lua: memoria clientului Steam (N-060) și puțin din FEX.
+
+## N-060 · Clientul Steam nativ ARM64 pornește jocuri x86: Dota din el, cu ~1 GB mai puțin consumat  ✅/🧪 (Realme GT, 2026-10-11)
+- **Cum pornește Valve un joc x86 din clientul ARM64** (`compat_log.txt`): prin unealta „fex” (aplicația
+  3127680, `FEX-Emu/fex-compat-tool`, un script Python cu FEX-ul lui Valve) urmată de runtime-uri: Dota
+  `fex-compat-tool run -- SteamLinuxRuntime_sniper/_v2-entry-point -- dota.sh`, jocurile vechi prin soldier +
+  scout. Clientul ARM64 are și un `linux64/steamclient.so` x86-64, la care se conectează jocul.
+- **La noi:** `tools/steam/fex-compat-tool` (al nostru) pune la loc mediul de dinainte de client (bibliotecile
+  arm64, GL-ul software și `libfxpath` sunt doar pentru client, păstrate în `FXD_GAMEENV_*`) și semnalează
+  `_v2-entry-point`-ului că rulează nativ; acesta dă scriptul jocului FEX-ului nostru, care citește `#!` și îl
+  rulează în runtime-ul x86 (`sniper-rootfs`). `fexdroid-steam-arm64.sh` înlocuiește cele trei verigi ale lui
+  Valve (și în bibliotecile care apar ulterior), face legăturile `~/.steam/sdk64`, `sdkarm64`, `bin64`...,
+  adaugă biblioteca clientului x86 (`files/steamlib`, cu Dota) ca a doua bibliotecă, ia setările video ale
+  jocurilor de la clientul x86 și oprește pre-compilarea shaderelor.
+- ⚠ **`uname -m` sub FEX răspunde `aarch64`**, deci nu deosebește cele două cazuri: prima variantă pornea Dota
+  și sub clientul x86 printr-un al doilea FEX. Acum semnalul e o variabilă (`FXD_FROM_ARM64_CLIENT`).
+- ⚠ **`LD_PRELOAD`:** clientul își pune bibliotecile în față fără separator; al nostru începe cu `:`.
+- ✅ **Pe Realme:** Hacker Evolution Duality (x86, 149 MB) rulează din clientul ARM64; **Dota ajunge în meniu,
+  conectat, și rulează replay-ul**, fără să fie descărcat din nou (manifestul neschimbat, `buildid` același).
+- ⚠ **Setările video sunt ale fiecărui client** (`userdata/<cont>/570/local/cfg/video.txt`): prima dată Dota a
+  pornit cu cele implicite (1584×720, fără FSR, umbre, ceață), cu 1,2 GB mai mult și 13,5 fps, până la
+  închiderea de către kernel (OOM). Launcher-ul le ia acum pe cele de la clientul x86.
+- **Măsurat cu `tools/fxctl/scenarios/dota-steam-client-ab.json`** (aceleași setări, replay 150 s, telefon
+  încins 40–45 °C):
+
+  | | fps | jocul (RAM + swap) | memorie disponibilă după | swap liber după |
+  |---|---|---|---|---|
+  | client x86 | 16,5 · 17,7 | 6,4 → 6,5 GB | 0,57 · 0,89 GB | 1,02 GB |
+  | client ARM64 | 17,5 · 17,3 | 6,3 → 6,5 GB | 1,90 · 1,98 GB | 1,38 · 1,27 GB |
+
+  Cadrele sunt la fel (în zgomot); telefonul rămâne cu **~1,1–1,4 GB mai multă memorie disponibilă**. Clientul
+  singur: 0,93 GB (RAM + swap) cu Dota pornit, față de ~1,8 GB clientul x86; 1,5 GB cu Magazinul deschis, față
+  de 2,9 GB (N-046).
+- 🟨 Jocul are seara 6,3–6,5 GB și sub clientul x86, față de 5,5–5,8 la prânz (N-059); nu am găsit de ce
+  (fișierele de setări ale clientului x86 sunt aceleași). În două runde x86 kernelul a închis Dota (OOM) la
+  final.
+- 🟨 **Schimbarea clientului:** după ce contul a fost folosit în clientul ARM64, clientul x86 a rămas la
+  „Loading user data…” peste 5 minute de mai multe ori (rundele x86 din `fxctl` eșuate). De văzut dacă trece
+  singur; pentru teste, câte un client pe rând, nu alternat.
+- `fxctl`: variantele pot alege clientul (`"game": "steam-arm64"`); linkurile `steam://` ajung la clientul
+  ARM64 prin `~/.steam/steam.pipe` (`steam <link>`, ca la a doua pornire a clientului lui Valve);
+  `steam_url` cu `until` retrimite linkul cât clientul încă pornește.
+- 🟨 Scripturile sunt copiate de mână pe Realme; într-o versiune nouă intră prin `scripts/build-payload.sh`.
+  Netestat pe alt telefon. Setarea clientului ARM64 rămâne „experiment”.

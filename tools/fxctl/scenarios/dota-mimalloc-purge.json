@@ -1,0 +1,146 @@
+{
+  "name": "dota-mimalloc-purge",
+  "description": "Dota's allocator (mimalloc 2.5 in libtier0) keeps freed memory 1 s, 10 s in its arenas (Valve's purge_delay 1000). Against giving it back at once (MIMALLOC_PURGE_DELAY=0): the game's RAM + swap after loading and after 150 s of the replay, and the frame rate.",
+  "note": "Screen coordinates are the Realme GT's (2400x1080, landscape, picture fitted). The replay file must exist in Dota's replays/ folder.",
+  "repeat": 2,
+  "order": "abba",
+  "noise_pct": 10,
+  "requires_charging": true,
+  "min_battery": 40,
+  "session_env": [
+    "FEX_PROFILESTATS=1"
+  ],
+  "launch_options": {
+    "570": "-condebug +fps_max 120 +playdemo replays/9020144444.dem"
+  },
+  "variants": [
+    {
+      "name": "valve",
+      "note": "purge_delay 1000 ms"
+    },
+    {
+      "name": "purge-now",
+      "session_env": [
+        "MIMALLOC_PURGE_DELAY=0"
+      ]
+    }
+  ],
+  "run": [
+    {
+      "do": "stop_session",
+      "settle": 8
+    },
+    {
+      "do": "apply_variant"
+    },
+    {
+      "do": "remove_file",
+      "path": "steamlib/steamapps/common/dota 2 beta/game/dota/console.log"
+    },
+    {
+      "do": "start_session",
+      "game": "steam"
+    },
+    {
+      "do": "wait",
+      "until": {
+        "state": "Running",
+        "game": "steam"
+      },
+      "timeout": 120,
+      "interval": 5
+    },
+    {
+      "do": "wait",
+      "until": {
+        "process": "steamwebhelper"
+      },
+      "timeout": 300,
+      "interval": 10,
+      "note": "Steam's web UI is up (the main window's X title is empty on the phone)"
+    },
+    {
+      "do": "sleep",
+      "seconds": 40,
+      "note": "Steam finishes logging in"
+    },
+    {
+      "do": "steam_url",
+      "url": "steam://rungameid/570"
+    },
+    {
+      "do": "wait",
+      "until": {
+        "process": "^dota$"
+      },
+      "timeout": 180,
+      "interval": 10
+    },
+    {
+      "do": "wait",
+      "until": {
+        "guest_grep": {
+          "file": "steamlib/steamapps/common/dota 2 beta/game/dota/console.log",
+          "pattern": "LoadingDisplay changed from LOADING to NONE"
+        }
+      },
+      "timeout": 400,
+      "interval": 5,
+      "note": "the replay has loaded"
+    },
+    {
+      "do": "sleep",
+      "seconds": 15
+    },
+    {
+      "do": "drag_handle",
+      "row_y": 239,
+      "x_range": [
+        2085,
+        2300
+      ],
+      "to_x": 2262,
+      "accept_min_x": 2230,
+      "source": "mouse",
+      "retries": 3,
+      "settle": 8,
+      "expect": {
+        "process": "^dota$"
+      },
+      "note": "seek to the same late moment of the match"
+    },
+    {
+      "do": "sleep",
+      "seconds": 22
+    },
+    {
+      "do": "screenshot",
+      "save": "start"
+    },
+    {
+      "do": "memory",
+      "match": "linuxsteamrt64/dota2",
+      "label": "before"
+    },
+    {
+      "do": "measure_fps",
+      "seconds": 150,
+      "label": "replay"
+    },
+    {
+      "do": "memory",
+      "match": "linuxsteamrt64/dota2",
+      "label": "after"
+    },
+    {
+      "do": "kill_process",
+      "match": "linuxsteamrt64/dota2"
+    }
+  ],
+  "teardown": [
+    {
+      "do": "kill_process",
+      "match": "linuxsteamrt64/dota2"
+    }
+  ]
+}

@@ -24,13 +24,14 @@ STEPS = {
     "stop_session": ((), ("settle",)),
     "start_session": (("game",), ()),
     "apply_variant": ((), ()),
-    "steam_url": (("url",), ()),
+    "steam_url": (("url",), ("until", "timeout", "resend_every")),
     "wait": (("until",), ("timeout", "interval")),
     "assert": (("that",), ()),
     "sleep": (("seconds",), ()),
     "remove_file": (("path",), ()),
     "write_file": (("path", "text"), ()),
     "kill_process": (("match",), ()),
+    "memory": (("match",), ("label",)),
     "screenshot": (("save",), ()),
     "measure_fps": (("seconds",), ("label", "window", "allow_hidden")),
     "tap": (("x", "y", "expect"), ("source", "expect_timeout")),
@@ -139,10 +140,17 @@ def validate(sc):
             errors.append(f"variants[{i}]: name {v['name']!r} used twice")
         names.add(v["name"])
         for k in v:
-            if k not in ("name", "session_env", "launch_options", "note"):
+            if k not in ("name", "session_env", "launch_options", "files", "game", "note"):
                 errors.append(f"variants[{i}]: unknown key {k!r}")
         if not all(isinstance(x, str) and "=" in x for x in v.get("session_env", [])):
             errors.append(f"variants[{i}].session_env: KEY=VALUE strings")
+        if v.get("game", "steam") not in ("steam", "dota", "steam-arm64"):
+            errors.append(f"variants[{i}].game: steam, dota or steam-arm64 (the session start_session starts)")
+        files = v.get("files", {})
+        if not isinstance(files, dict) or not all(isinstance(t, str) for t in files.values()):
+            errors.append(f"variants[{i}].files: {{\"path under files/\": \"text\"}}")
+        elif any(f.startswith("/") or ".." in f.split("/") for f in files):
+            errors.append(f"variants[{i}].files: paths under files/")
     for part in ("setup", "run", "teardown"):
         if part in sc:
             _check_steps(sc[part], part, errors)
@@ -329,7 +337,7 @@ class Runner:
             self.dev.control("stop")
             self.sleep(st.get("settle", 5))
         elif kind == "start_session":
-            self.dev.start_session(st["game"])
+            self.dev.start_session(self.variant.get("game", st["game"]))
         elif kind == "apply_variant":
             env = list(self.sc.get("session_env", [])) + list(self.variant.get("session_env", []))
             self.write("session-env.txt", "".join(l + "\n" for l in env))
@@ -337,8 +345,19 @@ class Runner:
             opts.update(self.variant.get("launch_options", {}))
             for appid, line in opts.items():
                 self.write(f"launch-options-{appid}.txt", line + "\n")
+            # A file one variant writes is put back as it was for the variants that do not.
+            mine = self.variant.get("files", {})
+            for rel in sorted({f for v in self.sc["variants"] for f in v.get("files", {})}):
+                if rel in mine:
+                    self.write(rel, mine[rel])
+                else:
+                    self.remember(rel)
+                    if self._restore[rel] is None:
+                        self.dev.remove_app_file(rel)
+                    else:
+                        self.dev.write_app_file(rel, self._restore[rel])
         elif kind == "steam_url":
-            self.dev.control("steam-url", st["url"])
+            self.steam_url(st)
         elif kind == "wait":
             seen = self.wait_for(st["until"], st.get("timeout", 60), st.get("interval", 5))
             self.out(f"   ok: {seen}")
@@ -356,6 +375,13 @@ class Runner:
             pids = self.dev.kill_matching(st["match"])
             if pids:
                 self.out(f"   stopped {st['match']}: {' '.join(pids)}")
+        elif kind == "memory":
+            mem = self.dev.process_memory(st["match"])
+            if mem is None:
+                raise StepFailed(f"no process matches {st['match']}")
+            self.out(f"   [{self.variant['name']}] memory: {mem['rss_mb']} MB in RAM + {mem['swap_mb']} MB in swap; "
+                     f"available {mem['available_mb']} MB, swap free {mem['swap_free_mb']} MB")
+            self.save(dict(label=st.get("label", "memory"), memory=mem, variant=self.variant["name"], round=rnd))
         elif kind == "screenshot":
             shot = parse_raw(self.dev.screencap_raw())
             name = f"{rnd:02d}-{self.variant['name']}-{st['save']}.png"
@@ -374,6 +400,25 @@ class Runner:
             self.dev.input("keyevent", st["key"])
         elif kind == "drag_handle":
             self.drag_handle(st)
+
+    def steam_url(self, st):
+        """The link, and with "until" sent again every resend_every seconds until the condition
+        holds: a client that is still starting can drop it (the arm64 one, from its pipe)."""
+        self.dev.steam_url(st["url"])
+        if "until" not in st:
+            return
+        deadline = self.clock() + st.get("timeout", 180)
+        every = st.get("resend_every", 60)
+        while True:
+            try:
+                seen = self.wait_for(st["until"], min(every, max(1, deadline - self.clock())), 10)
+                self.out(f"   ok: {seen}")
+                return
+            except StepFailed:
+                if self.clock() >= deadline:
+                    raise
+                self.out("   sent again")
+                self.dev.steam_url(st["url"])
 
     def drag_handle(self, st):
         """A slider (Dota's replay timeline): find the handle as the brightest spot on its row,

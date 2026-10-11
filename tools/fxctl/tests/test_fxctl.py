@@ -131,6 +131,8 @@ class Validation(unittest.TestCase):
             scenario.validate({"name": "x", "run": [], "variants": [{"name": "a"}, {"name": "a"}]})
         with self.assertRaises(scenario.ScenarioError):
             scenario.validate({"name": "x", "run": [], "variants": [{"name": "a", "session_env": ["NOEQUALS"]}]})
+        with self.assertRaises(scenario.ScenarioError):
+            scenario.validate({"name": "x", "run": [], "variants": [{"name": "a", "files": {"../x": ""}}]})
 
     def test_defaults(self):
         sc = scenario.validate({"name": "x", "run": []})
@@ -198,6 +200,10 @@ class FakePhone:
 
     def start_session(self, game):
         self.state = "Running"
+        self.started = game
+
+    def steam_url(self, url):
+        self.control("steam-url", url)
 
     def run_as(self, command, timeout=120):
         if command.startswith("cat files/"):
@@ -218,6 +224,9 @@ class FakePhone:
 
     def kill_matching(self, pattern):
         return []
+
+    def process_memory(self, pattern):
+        return {"rss_mb": 2400, "swap_mb": 3500, "available_mb": 1300, "swap_free_mb": 1100}
 
     def screencap_raw(self):
         return raw_image(2400, 300, dots=[((self.handle_x, 239), (255, 255, 255))])
@@ -285,6 +294,63 @@ class Running(unittest.TestCase):
             r.run()
         self.assertEqual(phone.inputs, [])
         self.assertIn("still not true", r.failures[0]["error"])
+
+    def test_variant_files(self):
+        phone = FakePhone()
+        phone.files["tuner.txt"] = "pin\n"
+        sc = scenario.validate({"name": "x", "run": [{"do": "apply_variant"}], "variants": [
+            {"name": "off", "files": {"tuner.txt": "off\n", "new.txt": "1\n"}}, {"name": "default"}]})
+        with tempfile.TemporaryDirectory() as d:
+            r, _ = fast_runner(phone, sc, d)
+            r.variant = sc["variants"][0]
+            r.step({"do": "apply_variant"}, 0)
+            self.assertEqual((phone.files["tuner.txt"], phone.files["new.txt"]), ("off\n", "1\n"))
+            r.variant = sc["variants"][1]
+            r.step({"do": "apply_variant"}, 0)
+            self.assertEqual(phone.files["tuner.txt"], "pin\n")
+            self.assertNotIn("new.txt", phone.files)
+
+    def test_variant_game(self):
+        phone = FakePhone()
+        sc = scenario.validate({"name": "x", "run": [{"do": "start_session", "game": "steam"}],
+                                "variants": [{"name": "arm", "game": "steam-arm64"}]})
+        with tempfile.TemporaryDirectory() as d:
+            r, _ = fast_runner(phone, sc, d)
+            r.run()
+        self.assertEqual(phone.started, "steam-arm64")
+        with self.assertRaises(scenario.ScenarioError):
+            scenario.validate({"name": "x", "run": [], "variants": [{"name": "a", "game": "wine"}]})
+
+    def test_steam_url_resent(self):
+        phone = FakePhone()
+        phone.state = "Running"
+        sent = []
+        def steam_url(url):
+            sent.append(url)
+            if len(sent) == 2:  # the first one was dropped by a client still starting
+                phone.game_started = True
+        phone.steam_url = steam_url
+        sc = scenario.validate({"name": "x", "run": [{"do": "steam_url", "url": "steam://rungameid/570",
+                                "until": {"process": "^dota$"}, "timeout": 300, "resend_every": 60}]})
+        with tempfile.TemporaryDirectory() as d:
+            r, _ = fast_runner(phone, sc, d)
+            r.run()
+        self.assertEqual(len(sent), 2)
+        self.assertEqual(r.failures, [])
+
+    def test_memory_step(self):
+        phone = FakePhone()
+        sc = scenario.validate({"name": "x", "run": [{"do": "memory", "match": "dota2"}]})
+        with tempfile.TemporaryDirectory() as d:
+            r, _ = fast_runner(phone, sc, d)
+            r.run()
+            with open(os.path.join(r.dir, "results.jsonl")) as f:
+                rec = json.loads(f.readline())
+        self.assertEqual(rec["memory"]["swap_mb"], 3500)
+
+    def test_parse_memory(self):
+        text = "Name:\tFEX\nVmRSS:\t 2048000 kB\nVmSwap:\t 1024 kB\nMemTotal: 11519924 kB\nMemAvailable: 1317280 kB\nSwapFree: 1089156 kB\n"
+        self.assertEqual(device.parse_memory(text), {"rss_mb": 2000, "swap_mb": 1, "available_mb": 1286, "swap_free_mb": 1063})
 
     def test_counter_reset_window_skipped(self):
         phone = FakePhone()

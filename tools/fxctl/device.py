@@ -43,6 +43,18 @@ def parse_battery(text):
     }
 
 
+def parse_memory(text):
+    """/proc/<pid>/status followed by /proc/meminfo: the process's RAM and swap, the system's
+    available memory and free swap, in MB."""
+    kb = {}
+    for line in text.splitlines():
+        m = re.match(r"(\w+):\s+(\d+) kB", line)
+        if m and m.group(1) not in kb:
+            kb[m.group(1)] = int(m.group(2))
+    return {"rss_mb": kb.get("VmRSS", 0) // 1024, "swap_mb": kb.get("VmSwap", 0) // 1024,
+            "available_mb": kb.get("MemAvailable", 0) // 1024, "swap_free_mb": kb.get("SwapFree", 0) // 1024}
+
+
 def parse_screen_state(window_dump, power_dump):
     """Awake, unlocked and our activity in front: the only state in which a tap is allowed."""
     awake = re.search(r"mWakefulness=Awake", power_dump) is not None
@@ -122,6 +134,15 @@ class Device:
         self.shell(f"am force-stop {PKG}")
         self.shell(f"am start -n {ACTIVITY} --es action {game}")
 
+    def steam_url(self, url):
+        """A steam:// link for the running client. The app hands links to the x86 client; the
+        arm64 client gets them the way a second start of Valve's client would pass them, as a
+        command line on its pipe."""
+        if self.control("status").get("game") == "steam-arm64":
+            self.run_as(f"echo {shlex.quote('steam ' + url)} > files/home-arm64/.steam/steam.pipe", timeout=20)
+        else:
+            self.control("steam-url", url)
+
     def write_app_file(self, rel_path, text):
         """files/<rel_path> in the app's data, through /data/local/tmp (run-as reads it there)."""
         if rel_path.startswith("/") or ".." in rel_path.split("/"):
@@ -150,6 +171,16 @@ class Device:
         if pids:
             self.run_as("kill " + " ".join(pids))
         return pids
+
+    def process_memory(self, pattern):
+        """RAM and swap (MB) of the first of the app's processes whose command line has [pattern],
+        and what the system still has available; None when no process matches."""
+        out = self.run_as("ps -A -o PID,ARGS")
+        pids = [l.split()[0] for l in out.splitlines()[1:] if pattern in l and "ps -A" not in l]
+        if not pids:
+            return None
+        status = self.run_as(f"cat /proc/{pids[0]}/status /proc/meminfo")
+        return parse_memory(status)
 
     def screencap_raw(self):
         return self.run("exec-out", "screencap", binary=True, timeout=60)
