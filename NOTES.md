@@ -1424,4 +1424,4 @@ dintr-un nucleu în timpul jocului). Valve publică un client compilat pentru AR
   aștepta până termina GPU-ul (procesorul și GPU-ul lucrau pe rând). Acum o întrebare cu timp 0 citește
   timestamp-ul RETIRED (`IOCTL_KGSL_CMDSTREAM_READTIMESTAMP_CTXTID`) și compară cu wrap-around.
   DroidDeck/Bannerlator raportează 614 → 4335 fps într-un demo D3D12 (limitat de GPU, nu un joc).
-  De măsurat pe Realme: replay-ul Dota, mai multe porniri cu și fără patch (N-031: 20–45 ms/cadru în acest ioctl).
+  `FEXDROID_NO_KGSL_POLL=1` (în `files/session-env.txt`) pune la loc comportamentul vechi, pentru A/B. De măsurat pe Realme: replay-ul Dota, mai multe porniri cu și fără patch (N-031: 20–45 ms/cadru în acest ioctl).
