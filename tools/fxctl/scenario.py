@@ -139,10 +139,15 @@ def validate(sc):
             errors.append(f"variants[{i}]: name {v['name']!r} used twice")
         names.add(v["name"])
         for k in v:
-            if k not in ("name", "session_env", "launch_options", "note"):
+            if k not in ("name", "session_env", "launch_options", "files", "note"):
                 errors.append(f"variants[{i}]: unknown key {k!r}")
         if not all(isinstance(x, str) and "=" in x for x in v.get("session_env", [])):
             errors.append(f"variants[{i}].session_env: KEY=VALUE strings")
+        files = v.get("files", {})
+        if not isinstance(files, dict) or not all(isinstance(t, str) for t in files.values()):
+            errors.append(f"variants[{i}].files: {{\"path under files/\": \"text\"}}")
+        elif any(f.startswith("/") or ".." in f.split("/") for f in files):
+            errors.append(f"variants[{i}].files: paths under files/")
     for part in ("setup", "run", "teardown"):
         if part in sc:
             _check_steps(sc[part], part, errors)
@@ -337,6 +342,17 @@ class Runner:
             opts.update(self.variant.get("launch_options", {}))
             for appid, line in opts.items():
                 self.write(f"launch-options-{appid}.txt", line + "\n")
+            # A file one variant writes is put back as it was for the variants that do not.
+            mine = self.variant.get("files", {})
+            for rel in sorted({f for v in self.sc["variants"] for f in v.get("files", {})}):
+                if rel in mine:
+                    self.write(rel, mine[rel])
+                else:
+                    self.remember(rel)
+                    if self._restore[rel] is None:
+                        self.dev.remove_app_file(rel)
+                    else:
+                        self.dev.write_app_file(rel, self._restore[rel])
         elif kind == "steam_url":
             self.dev.control("steam-url", st["url"])
         elif kind == "wait":

@@ -1550,3 +1550,24 @@ telefonul la priză (baterie 36–46 °C).
   mari (limitele sunt aceleași în ambele variante). Setarea rămâne pornită implicit.
 - **`fps_max 24` nu schimbă nimic:** încins, jocul nu ajunge la 24, deci limita nu are ce tăia.
 - La rece prima rundă pornește de la 21–22 fps și coboară la 14–16 în 3–4 minute: căldura rămâne factorul principal.
+
+## N-058 · Așezarea firelor și glibc fără AVX, verificate în replay  ✅ (Realme GT, 2026-10-11)
+Cele două setări implicite fuseseră măsurate doar în scena demo (`ThreadTuner`, N-039) și pe un program de test
+(`GLIBC_TUNABLES`, N-047). Verificat în replay-ul Dota cu `tools/fxctl/scenarios/dota-tuner-libc-avx.json`:
+150 s pe rundă, 3 variante × 2, ABBA, telefonul la priză (baterie 42–46 °C). Variantele pot scrie acum fișiere în
+`files/` (`"files": {"tuner.txt": "off\n"}`); la variantele care nu le scriu fișierele sunt puse la loc.
+Verificat în timpul rundei „fără așezare”: toate firele jocului pe 0–7.
+
+| Variantă | fps (runda 1 · runda 2) | Limita nucleului X1 (MHz, medie) | fps la 1000 MHz |
+|---|---|---|---|
+| **implicit** (așezare `big`, glibc fără AVX) | **17,7 · 14,4** | 1338 · 1075 | 13,2 · 13,4 |
+| fără așezarea firelor (`tuner.txt` = `off`) | 16,7 · 13,1 | 1397 · 1121 | 12,0 · 11,7 |
+| glibc cu AVX (`GLIBC_TUNABLES=` gol) | 15,8 · 15,5 | 1282 · 1259 | 12,3 · 12,3 |
+
+- Pe medii brute diferențele sunt în zgomot (−7% și −2%), fiindcă limitele de frecvență au variat cu 25% între
+  runde. Raportate la limita nucleului X1 (unde rulează firul principal), ambele setări câștigă:
+  **așezarea firelor ~+12%**, **glibc fără AVX ~+8%**. În runda 2, varianta implicită a avut limita cea mai mică
+  (1075 MHz) și tot a dat mai multe cadre decât varianta fără așezare (1121 MHz).
+- Ambele rămân pornite implicit. Nu mai e nimic de luat din ele.
+- Lista de idei din 2026-10-11 (fixarea firului principal, căutarea de controllere a lui SDL, TSO pe bibliotecile
+  Source 2) era deja făcută: N-039, N-034/N-035, N-041.

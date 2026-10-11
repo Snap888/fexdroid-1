@@ -131,6 +131,8 @@ class Validation(unittest.TestCase):
             scenario.validate({"name": "x", "run": [], "variants": [{"name": "a"}, {"name": "a"}]})
         with self.assertRaises(scenario.ScenarioError):
             scenario.validate({"name": "x", "run": [], "variants": [{"name": "a", "session_env": ["NOEQUALS"]}]})
+        with self.assertRaises(scenario.ScenarioError):
+            scenario.validate({"name": "x", "run": [], "variants": [{"name": "a", "files": {"../x": ""}}]})
 
     def test_defaults(self):
         sc = scenario.validate({"name": "x", "run": []})
@@ -285,6 +287,21 @@ class Running(unittest.TestCase):
             r.run()
         self.assertEqual(phone.inputs, [])
         self.assertIn("still not true", r.failures[0]["error"])
+
+    def test_variant_files(self):
+        phone = FakePhone()
+        phone.files["tuner.txt"] = "pin\n"
+        sc = scenario.validate({"name": "x", "run": [{"do": "apply_variant"}], "variants": [
+            {"name": "off", "files": {"tuner.txt": "off\n", "new.txt": "1\n"}}, {"name": "default"}]})
+        with tempfile.TemporaryDirectory() as d:
+            r, _ = fast_runner(phone, sc, d)
+            r.variant = sc["variants"][0]
+            r.step({"do": "apply_variant"}, 0)
+            self.assertEqual((phone.files["tuner.txt"], phone.files["new.txt"]), ("off\n", "1\n"))
+            r.variant = sc["variants"][1]
+            r.step({"do": "apply_variant"}, 0)
+            self.assertEqual(phone.files["tuner.txt"], "pin\n")
+            self.assertNotIn("new.txt", phone.files)
 
     def test_counter_reset_window_skipped(self):
         phone = FakePhone()
