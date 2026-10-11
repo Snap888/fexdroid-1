@@ -71,11 +71,22 @@ object Updater {
                 val j = JSONObject(conn.inputStream.bufferedReader().use { it.readText() })
                 val info = Info(j.getString("sha"), j.optString("built"), j.getLong("size"), j.getString("sha256"),
                     "$base/fexdroid-legacy.apk", j.optString("version"))
-                if (info.sha == BuildConfig.GIT_SHA) State.UpToDate else State.Available(info)
+                if (info.sha == BuildConfig.GIT_SHA || !isNewer(info.version, BuildConfig.VERSION_NAME)) State.UpToDate
+                else State.Available(info)
             } catch (t: Throwable) {
                 if (quiet) State.Idle else State.Failed(explain(t), null)
             }
         }
+    }
+
+    /** "0.3.112-alpha" vs "0.3.116-alpha-legacy": only a higher version is an update (local builds run ahead
+     *  of the release, and installing the release over them would be a downgrade). Unreadable: offer it. */
+    internal fun isNewer(release: String, installed: String): Boolean {
+        fun parse(v: String) = Regex("""^(\d+)\.(\d+)\.(\d+)""").find(v)?.groupValues?.drop(1)?.map { it.toInt() }
+        val r = parse(release) ?: return true
+        val i = parse(installed) ?: return true
+        for (k in 0..2) if (r[k] != i[k]) return r[k] > i[k]
+        return false
     }
 
     private fun explain(t: Throwable): String = when (t) {
