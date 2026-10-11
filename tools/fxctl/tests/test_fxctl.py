@@ -181,7 +181,11 @@ class FakePhone:
             title = "Dota 2" if self.game_started else "Steam Big Picture Mode"
             return {"ok": True, "focus": [f'focus 0x1, toplevel 0x2 "{title}"']}
         if method == "procs":
-            return {"ok": True, "procs": [{"pid": 1, "name": "dota2", "rssKb": 1}]}
+            # Names as on the Realme: the game shows up as "dota".
+            procs = [{"pid": 1, "name": "steamwebhelper", "rssKb": 1}]
+            if self.game_started:
+                procs.append({"pid": 2, "name": "dota", "rssKb": 1})
+            return {"ok": True, "procs": procs}
         if method == "stop":
             self.state, self.game_started = "Idle", False
             return {"ok": True}
@@ -265,7 +269,7 @@ class Running(unittest.TestCase):
         phone = FakePhone(locked=True)
         sc = scenario.validate({"name": "x", "run": [
             {"do": "start_session", "game": "steam"},
-            {"do": "tap", "x": 5, "y": 5, "expect": {"process": "dota2"}}]})
+            {"do": "tap", "x": 5, "y": 5, "expect": {"process": "steamwebhelper"}}]})
         with tempfile.TemporaryDirectory() as d:
             r, _ = fast_runner(phone, sc, d)
             r.run()
