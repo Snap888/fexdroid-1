@@ -1429,3 +1429,34 @@ dintr-un nucleu în timpul jocului). Valve publică un client compilat pentru AR
   cu patch **16,9 fps** (16,8 / 16,9 / 17,0), fără patch **15,8 fps** (15,4 / 15,5 / 16,5). **+7%**, constant
   (abaterea cu patch 0,1). Mic, dar real; câștigul mare din demo-ul D3D12 nu se vede în Dota, care e limitat
   de firul principal și de frânarea termică (N-034).
+
+## N-055 · Teste repetabile de pe PC: `tools/fxctl`, fără atingeri oarbe  ✅ (Realme GT, 2026-10-11: un A/B complet de 6 runde, nesupravegheat)
+Ideea din DroidDeck (`docs/agent-control.md`, `droiddeckctl`, scenarii JSON), scrisă de la zero; fexdroid rămâne MIT.
+- **În aplicație:** `ControlProvider.kt`, `content://ro.cobrabm.fexdroid.control`, doar pentru adb: manifestul cere
+  permisiunea DUMP (o are doar shell-ul adb, nicio aplicație) și codul verifică și uid-ul (2000 shell, 0 root).
+  `adb shell content call --uri content://ro.cobrabm.fexdroid.control --method status` → JSON. Metode: `status`
+  (starea sesiunii, versiunea, ce e instalat, contoarele de cadre), `counters` (contoarele `DisplayBridge`:
+  fps = diferența de changed + direct pe timp; aceleași cadre ca liniile `fexdroid-display` din logcat), `focus`
+  (fereastra X cu focus și titlul ei, prin `fxwmfit --focus-info`), `procs`, `perf` (`PerfSnapshot`), `log [n]`,
+  `report`, `stop`, `steam-url <link>`. Sesiunea pornește tot cu `am start ... --es action steam`.
+- **`steam-url`:** `fexdroid-steam.sh --url steam://rungameid/570` dă linkul Steam-ului care rulează (ca un al
+  doilea `steam.sh <link>` pe PC) și nu face nimic altceva. Înlocuiește apăsarea pe Play din `bench.sh`.
+  Doar sesiunea Steam x86. 🟨 Netestat pe telefon: de verificat că Steam pornește Dota din link și în Big Picture.
+- **Pe PC:** `tools/fxctl/fxctl` (Python, doar biblioteca standard): `status`, `start steam`, `stop`, `fps`,
+  `screenshot out.png` (din `screencap` brut, fără PIL), `run <scenariu.json>`, `validate`.
+- **Scenarii** (`tools/fxctl/scenarios/`): pași `start_session`, `wait` (condiții: stare, proces, titlul ferestrei,
+  linie în jurnal, `grep` într-un fișier al aplicației, culoarea unui pixel, fps peste un prag, `all/any/not`),
+  `steam_url`, `measure_fps`, `drag_handle` (cursorul din replay, ca în `bench.sh`: găsit pe captură, mutat, verificat,
+  repetat). Variante A/B prin `files/session-env.txt` și `launch-options-<appid>.txt`, rulate în ordinea ABBA
+  (încălzirea telefonului cade pe ambele), cu medie, abatere, diferență și verdict: sub 10% (zgomotul din N-046) sau
+  t < 2 → „within noise”. Rezultatele în `build/fxctl/<nume>-<oră>/results.jsonl` plus capturile.
+- **Siguranță:** niciun pas de atingere, glisare sau tastă fără `expect` (scenariul nu se încarcă); înainte de
+  fiecare atingere: ecran pornit, deblocat, fexdroid în față, apoi condiția `expect` pe o captură sau o stare nouă.
+  Refuză dacă telefonul nu se încarcă sau bateria e sub prag (`--force` trece peste). Refuză un NVIDIA Shield.
+  `session-env.txt` și opțiunile de lansare scrise sunt puse la loc la final.
+- `tools/fxctl/scenarios/dota-replay-ab.json` e `bench.sh` mutat în scenariu; coordonatele sunt ale Realme-ului.
+  Teste pe PC: `python3 -m unittest discover -s tools/fxctl/tests` (26, cu un telefon simulat).
+- Pe telefon: procesul jocului apare ca `dota` (nu `dota2`), iar fereastra principală Steam are titlul X gol, deci
+  „Steam e gata” = procesul `steamwebhelper`. Comutatorul pentru Mesa `0008` există (`FEXDROID_NO_KGSL_POLL`).
+- De făcut: saltul în replay prin `demo_gototick` în loc de cursor (N-046) dacă se găsește o cale
+  fără consolă.

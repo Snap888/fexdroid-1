@@ -14,7 +14,7 @@ import java.io.File
 object PerfSnapshot {
     private const val SAMPLE_MS = 3000L
 
-    private data class Proc(val pid: Int, val name: String, val ticks: Long, val rssKb: Long)
+    internal data class Proc(val pid: Int, val name: String, val ticks: Long, val rssKb: Long)
     private data class Task(val tid: Int, val name: String, val ticks: Long, val cpu: Int)
 
     private fun read(path: String): String? = runCatching { File(path).readText().trim() }.getOrNull()
@@ -24,7 +24,7 @@ object PerfSnapshot {
 
     private fun ticks(f: List<String>) = (f.getOrNull(11)?.toLongOrNull() ?: 0) + (f.getOrNull(12)?.toLongOrNull() ?: 0)
 
-    private fun processes(dir: String): List<Proc> = File("/proc").list().orEmpty().mapNotNull { n ->
+    internal fun processes(dir: String): List<Proc> = File("/proc").list().orEmpty().mapNotNull { n ->
         val pid = n.toIntOrNull() ?: return@mapNotNull null
         val cmd = read("/proc/$pid/cmdline")?.replace('\u0000', ' ') ?: return@mapNotNull null
         if (dir !in cmd && pid != Os.getpid()) return@mapNotNull null
@@ -117,6 +117,11 @@ object PerfSnapshot {
         MemoryWatch.last.takeIf { it.isNotEmpty() }?.let { appendLine("memory watch: $it${if (MemoryWatch.low) " (LOW)" else ""}") }
         appendLine("settings: screen $screen, FEX profile ${AppSettings.fexProfile}")
         // A game whose window does not have the input focus slows itself down (N-034).
+        appendLine("x11: ${focusInfo(env).joinToString("; ").ifEmpty { "focus not readable" }}")
+    }
+
+    /** Which X window has the input focus, with its title (tools/fxwmfit --focus-info). */
+    fun focusInfo(env: LinuxEnv): List<String> {
         val focus = ArrayList<String>()
         runCatching {
             val pb = ProcessBuilder("${env.root}/usr/bin/fxwmfit", "--focus-info").redirectErrorStream(true)
@@ -129,6 +134,6 @@ object PerfSnapshot {
             p.forEachOutputLine { focus += it }
             p.waitFor()
         }
-        appendLine("x11: ${focus.joinToString("; ").ifEmpty { "focus not readable" }}")
+        return focus
     }
 }

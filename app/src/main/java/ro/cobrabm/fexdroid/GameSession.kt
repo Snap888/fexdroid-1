@@ -326,6 +326,23 @@ object GameSession {
         }
     }
 
+    /** The last [n] lines of the session log (tools/fxctl). */
+    fun logTail(n: Int): List<String> = synchronized(logLines) { logLines.toList() }.takeLast(n)
+
+    /**
+     * Hands a steam:// link (e.g. steam://rungameid/570) to the Steam client of the running
+     * session, as a second `steam.sh <link>` does on a PC (tools/fxctl). Null when handed over,
+     * else why not.
+     */
+    fun openSteamUrl(url: String): String? {
+        val s = state as? SessionState.Running ?: return "no session is running"
+        if (s.game != Game.STEAM) return "only the x86 Steam session takes links (this is ${s.game.tag})"
+        val xs = session ?: return "no session"
+        val ctx = appContext ?: return "no session"
+        xs.launch("steam-url", Game.STEAM.argv(LinuxEnv(ctx)) + listOf("--url", url))
+        return null
+    }
+
     /** Stops the game, audio and X server; back to Idle. */
     fun stop() {
         synchronized(this) { generation++ }
