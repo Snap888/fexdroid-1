@@ -1571,3 +1571,25 @@ Verificat în timpul rundei „fără așezare”: toate firele jocului pe 0–7
 - Ambele rămân pornite implicit. Nu mai e nimic de luat din ele.
 - Lista de idei din 2026-10-11 (fixarea firului principal, căutarea de controllere a lui SDL, TSO pe bibliotecile
   Source 2) era deja făcută: N-039, N-034/N-035, N-041.
+
+## N-059 · Memoria în replay: jocul are ~5,8 GB, alocatorul lui nu ține memorie degeaba  ✅ (Realme GT, 2026-10-11)
+- **Unde e memoria** (replay-ul Dota, `/proc/<pid>/smaps_rollup`, ca root): jocul 2,4 GB în RAM + 3,5 GB în swap;
+  clientul Steam x86 0,25 GB în RAM + 1,5 GB în swap (procesul web ~1,3 GB, clientul 0,3 GB); aplicația, Xvfb
+  și sunetul sub 0,1 GB. Memoria disponibilă ~1,1–1,3 GB, iar swap-ul se oprește la 1,0 GB liber din 7,5
+  în fiecare rundă: telefonul e la limită.
+- **În joc:** cinci zone anonime de câte 1 GiB țin ~4 GB. Sunt arenele alocatorului jocului: `libtier0` aduce
+  **mimalloc 2.5** („Low-level allocator: mimalloc”). Restul: memorie video KGSL 0,14 GB, FEX (cod tradus 0,22 GB,
+  tabele 0,08 GB, alocatorul lui 0,17 GB).
+- **Setările lui Valve** (`MIMALLOC_VERBOSE=1` în `session-env.txt`): `purge_delay` 1000 ms (implicit 10),
+  `arena_purge_mult` 10, `purge_decommits` 1, `arena_reserve` 1 GiB. Memoria eliberată se dă înapoi după 1 s
+  (10 s în arene), deci nu se adună.
+- **Verificat cu `tools/fxctl/scenarios/dota-mimalloc-purge.json`** (pas nou `memory` în fxctl: RAM și swap
+  ale procesului, memoria disponibilă), 2 × 2 runde, ABBA:
+
+  | Variantă | joc după încărcare (RAM + swap) | după 150 s de replay | fps |
+  |---|---|---|---|
+  | setările lui Valve | 5,50 · 5,53 GB | 5,81 · 5,83 GB | 16,9 · 15,9 |
+  | `MIMALLOC_PURGE_DELAY=0` | 5,48 · 5,56 GB | 5,77 · 5,80 GB | 16,5 · 16,8 |
+
+  Nicio diferență: memoria jocului e folosită de-adevăratelea. Rămâne cum a lăsat-o Valve.
+- Ce se mai poate lua: memoria clientului Steam (N-060) și puțin din FEX.

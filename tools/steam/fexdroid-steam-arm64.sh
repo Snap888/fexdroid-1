@@ -56,13 +56,80 @@ if [ ! -x "$STEAMROOT/steamrtarm64/steam" ]; then
 fi
 ln -sfn "$STEAMROOT" "$HOME/.steam/root"
 ln -sfn "$STEAMROOT" "$HOME/.steam/steam"
+# What Valve's steam.sh links for games: sdk64 is where an x86-64 game finds the client's
+# x86-64 steamclient.so, sdkarm64 holds steam-launch-wrapper, binNN the overlay.
+for l in sdk32:linux32 sdk64:linux64 sdkarm64:linuxarm64 bin32:ubuntu12_32 bin64:ubuntu12_64 binarm64:steamrtarm64; do
+    ln -sfn "$STEAMROOT/${l#*:}" "$HOME/.steam/${l%%:*}"
+done
+
+# The x86 client's library (Dota and the runtimes it installed) as a second library, so a
+# game is not downloaded twice. Steam keeps the entry once it is there.
+lf="$STEAMROOT/steamapps/libraryfolders.vdf"
+if [ -d "$FXD_FILES/steamlib/steamapps" ] && [ -f "$lf" ] && ! grep -q "\"$FXD_FILES/steamlib\"" "$lf"; then
+    n=$(grep -c '^	"[0-9]*"$' "$lf")
+    sed -i '$d' "$lf"
+    printf '\t"%s"\n\t{\n\t\t"path"\t\t"%s"\n\t\t"label"\t\t""\n\t\t"apps"\n\t\t{\n\t\t}\n\t}\n}\n' \
+        "$n" "$FXD_FILES/steamlib" >> "$lf"
+    log "the x86 client's library added: $FXD_FILES/steamlib"
+fi
+
+# A game's video settings live in each client's userdata (<account>/<app>/local/cfg/video.txt);
+# without the x86 client's, Dota starts here with its defaults, heavier and 1.2 GB bigger
+# (NOTES N-060). Take the newer one.
+X86_USERDATA="$FXD_FILES/home/user/.local/share/Steam/userdata"
+for v in "$X86_USERDATA"/*/*/local/cfg/video.txt; do
+    [ -f "$v" ] || continue
+    to="$STEAMROOT/userdata/${v#"$X86_USERDATA"/}"
+    if [ ! -f "$to" ] || [ "$v" -nt "$to" ]; then
+        mkdir -p "$(dirname "$to")" && cp -p "$v" "$to" && log "video settings from the x86 client: ${v#"$X86_USERDATA"/}"
+    fi
+done
+
+# Shader pre-caching off, once, as for the x86 client (fexdroid-steam.sh, NOTES N-031): Steam
+# would download precompiled shaders before every game start and process them for ever.
+cfg="$STEAMROOT/config/config.vdf"
+if [ ! -e "$FXD_FILES/.shader-precache-default-arm64" ] && [ -e "$cfg" ]; then
+    if grep -q '"ShaderCacheManager"' "$cfg" && ! grep -q '"DisableShaderCache"' "$cfg"; then
+        sed -i '/"ShaderCacheManager"/{n;s/{/{\n\t\t\t\t\t"DisableShaderCache"\t\t"1"/;}' "$cfg"
+        log "shader pre-caching: off"
+    fi
+    : > "$FXD_FILES/.shader-precache-default-arm64"
+fi
+
+# Games: x86 ones start through Steam's "fex" tool and the Steam Linux Runtimes. Their
+# entry points are replaced by ours (no containers, see _v2-entry-point and fex-compat-tool),
+# and the environment below, which is the client's, is kept for fex-compat-tool to undo.
+for v in LD_LIBRARY_PATH LD_PRELOAD LIBGL_DRIVERS_PATH LIBGL_ALWAYS_SOFTWARE LP_NUM_THREADS \
+         FONTCONFIG_SYSROOT XDG_DATA_DIRS SSL_CERT_FILE SSL_CERT_DIR; do
+    if eval "[ -n \"\${$v+x}\" ]"; then eval "export FXD_GAMEENV_$v=\"=\$$v\""; else export "FXD_GAMEENV_$v=-"; fi
+done
+SHIM_DIR="$FXD_ROOT/usr/lib/fexdroid/steam"
+replace_entry_points() {
+    # Its own library, and the x86 client's (where Dota is) when the client was given it.
+    for ep in "$STEAMROOT"/steamapps/common/SteamLinuxRuntime*/_v2-entry-point \
+              "$FXD_FILES"/steamlib/steamapps/common/SteamLinuxRuntime*/_v2-entry-point \
+              "$STEAMROOT"/steamapps/common/SteamLinuxRuntime/scout-on-soldier-entry-point-v2 \
+              "$STEAMROOT"/steamapps/common/FEX-Emu/fex-compat-tool; do
+        [ -f "$ep" ] || continue
+        case "$ep" in */fex-compat-tool) ours="$SHIM_DIR/fex-compat-tool" ;; *) ours="$SHIM_DIR/_v2-entry-point" ;; esac
+        if ! cmp -s "$ep" "$ours"; then
+            [ -f "$ep.valve" ] || mv "$ep" "$ep.valve"
+            cp "$ours" "$ep"
+            chmod 755 "$ep"
+            log "launcher replaced: ${ep#"$STEAMROOT"/steamapps/common/}"
+        fi
+    done
+}
+replace_entry_points
+( while sleep 5; do replace_entry_points; done ) &
 
 export TMPDIR="${TMPDIR:-$FXD_ROOT/tmp}"
 export SDL_VIDEODRIVER=x11
 export STEAMOS=1
 export LD_LIBRARY_PATH="$STEAMROOT/steamrtarm64:$STEAMROOT/linuxarm64${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 # Linux paths (/tmp, /etc, /usr...) are inside the rootfs.
-export LD_PRELOAD="$FXD_ROOT/usr/lib/fexdroid/libfxpath.so"
+# The leading ":" because the client puts its overlay libraries in front without one.
+export LD_PRELOAD=":$FXD_ROOT/usr/lib/fexdroid/libfxpath.so"
 # What libraries look for at fixed places, said outright as well.
 export FONTCONFIG_SYSROOT="$FXD_ROOT"
 export SSL_CERT_FILE="$FXD_ROOT/etc/ssl/certs/ca-certificates.crt"

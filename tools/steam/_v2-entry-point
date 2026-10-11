@@ -69,4 +69,14 @@ if [ -n "${SteamAppId:-}" ] && [ -n "${FXD_FILES:-}" ] && [ -f "$FXD_FILES/launc
         */SteamLinuxRuntime_*) set -- "$@" $(cat "$FXD_FILES/launch-options-$SteamAppId.txt") ;;
     esac
 fi
+# Started by the arm64 Steam client (fex-compat-tool), this script runs natively. A game's
+# start script (dota.sh) has to run in the x86 runtime, as it would in the container: hand
+# the command to FEX, which reads "#!" itself. Under the x86 client we already are in FEX.
+case "$here" in
+    */SteamLinuxRuntime_*)
+        if [ "$(uname -m)" = aarch64 ] && [ -n "${FXD_ROOT:-}" ] && [ -x "$FXD_ROOT/usr/bin/FEX" ]; then
+            exec "$FXD_ROOT/usr/bin/FEX" "$@"
+        fi
+        ;;
+esac
 exec "$@"

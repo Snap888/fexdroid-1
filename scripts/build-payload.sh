@@ -112,6 +112,7 @@ install -D -m 0755 tools/steam/fexdroid-steam.sh "$A/usr/lib/fexdroid/steam/fexd
 install -D -m 0755 tools/steam/_v2-entry-point "$A/usr/lib/fexdroid/steam/_v2-entry-point"
 install -D -m 0755 tools/steam/fexdroid-dota.sh "$A/usr/lib/fexdroid/steam/fexdroid-dota.sh"
 install -D -m 0755 tools/steam/fexdroid-steam-arm64.sh "$A/usr/lib/fexdroid/steam/fexdroid-steam-arm64.sh"
+install -D -m 0755 tools/steam/fex-compat-tool "$A/usr/lib/fexdroid/steam/fex-compat-tool"
 
 # Test for the glibc seccomp workarounds (patches/glibc/0003).
 clang --target=aarch64-linux-gnu --sysroot=build/rootfs/sysroot-arm64 -fuse-ld=lld -O2 \

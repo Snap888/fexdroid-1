@@ -78,7 +78,7 @@ def main(argv=None):
         dev.start_session(a.game)
     elif a.cmd == "steam-url":
         require_charging(dev, a.force)
-        dev.control("steam-url", a.url)
+        dev.steam_url(a.url)
     elif a.cmd == "screenshot":
         with open(a.out, "wb") as f:
             f.write(parse_raw(dev.screencap_raw()).png())

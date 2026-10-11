@@ -1,0 +1,30 @@
+#!/bin/sh
+# fexdroid stand-in for Valve's FEX-Emu/fex-compat-tool (Steam's "fex" compatibility tool).
+#
+# The arm64 Steam client (fexdroid-steam-arm64.sh) starts x86 games through this tool:
+#   fex-compat-tool run|waitforexitandrun -- <runtime entry point> ... -- <game>
+# Valve's version is a Python script that runs its own FEX build inside the runtime's
+# container. Here there is no container: the runtimes' entry points are ours too
+# (_v2-entry-point), and our glibc starts the x86 program at the end of the chain through
+# the app's FEX (patches/glibc/0004).
+#
+# What the client needed for itself (arm64 libraries, Mesa's software GL, libfxpath...) is
+# not for the game: fexdroid-steam-arm64.sh kept the values from before as FXD_GAMEENV_<NAME>
+# ("=value", or "-" when unset), and they are put back here.
+for v in LD_LIBRARY_PATH LD_PRELOAD LIBGL_DRIVERS_PATH LIBGL_ALWAYS_SOFTWARE LP_NUM_THREADS \
+         FONTCONFIG_SYSROOT XDG_DATA_DIRS SSL_CERT_FILE SSL_CERT_DIR; do
+    eval "saved=\${FXD_GAMEENV_$v-}"
+    case "$saved" in
+        =*) export "$v=${saved#=}" ;;
+        -) unset "$v" ;;
+    esac
+    unset "FXD_GAMEENV_$v"
+done
+while [ $# -gt 0 ]; do
+    case "$1" in
+        --) shift; break ;;
+        *) shift ;;
+    esac
+done
+[ $# -gt 0 ] || exit 0
+exec "$@"
