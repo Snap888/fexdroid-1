@@ -1415,3 +1415,13 @@ dintr-un nucleu în timpul jocului). Valve publică un client compilat pentru AR
   secundă: procesul de randare 66% dintr-un nucleu (compozitorul software 31%), clientul 38%, procesul web 12%,
   puntea aplicației 59%. Lipsește UDisks2 („Failed to initialize storage device manager”): de văzut la
   instalarea jocurilor.
+
+## N-052 · Idei preluate din DroidDeck; așteptările KGSL cu timp 0  🧪 (compilat pe PC, 2026-10-11; telefon: netestat)
+- DroidDeck (github.com/Droid-Deck/DroidDeck, GPL-3.0) rulează clientul Steam ARM64 de la Valve prin proot +
+  gamescope, cu Proton ARM64 și FEX-ul Valve. fexdroid rămâne MIT: preluăm idei, nu cod.
+- **Patch Mesa 0008:** KGSL citește `timeout = 0` la `IOCTL_KGSL_DEVICE_WAITTIMESTAMP_CTXTID` ca „fără limită”.
+  `get_relative_ms()` dă 0 când termenul a trecut sau când apelantul doar întreabă, deci orice „a terminat?”
+  aștepta până termina GPU-ul (procesorul și GPU-ul lucrau pe rând). Acum o întrebare cu timp 0 citește
+  timestamp-ul RETIRED (`IOCTL_KGSL_CMDSTREAM_READTIMESTAMP_CTXTID`) și compară cu wrap-around.
+  DroidDeck/Bannerlator raportează 614 → 4335 fps într-un demo D3D12 (limitat de GPU, nu un joc).
+  De măsurat pe Realme: replay-ul Dota, mai multe porniri cu și fără patch (N-031: 20–45 ms/cadru în acest ioctl).
