@@ -1430,38 +1430,28 @@ dintr-un nucleu în timpul jocului). Valve publică un client compilat pentru AR
   (abaterea cu patch 0,1). Mic, dar real; câștigul mare din demo-ul D3D12 nu se vede în Dota, care e limitat
   de firul principal și de frânarea termică (N-034).
 
-## N-055 · Teste repetabile de pe PC: `tools/fxctl`, fără atingeri oarbe  ✅ (Realme GT, 2026-10-11: un A/B complet de 6 runde, nesupravegheat)
-Ideea din DroidDeck (`docs/agent-control.md`, `droiddeckctl`, scenarii JSON), scrisă de la zero; fexdroid rămâne MIT.
-- **În aplicație:** `ControlProvider.kt`, `content://ro.cobrabm.fexdroid.control`, doar pentru adb: manifestul cere
-  permisiunea DUMP (o are doar shell-ul adb, nicio aplicație) și codul verifică și uid-ul (2000 shell, 0 root).
-  `adb shell content call --uri content://ro.cobrabm.fexdroid.control --method status` → JSON. Metode: `status`
-  (starea sesiunii, versiunea, ce e instalat, contoarele de cadre), `counters` (contoarele `DisplayBridge`:
-  fps = diferența de changed + direct pe timp; aceleași cadre ca liniile `fexdroid-display` din logcat), `focus`
-  (fereastra X cu focus și titlul ei, prin `fxwmfit --focus-info`), `procs`, `perf` (`PerfSnapshot`), `log [n]`,
-  `report`, `stop`, `steam-url <link>`. Sesiunea pornește tot cu `am start ... --es action steam`.
-- **`steam-url`:** `fexdroid-steam.sh --url steam://rungameid/570` dă linkul Steam-ului care rulează (ca un al
-  doilea `steam.sh <link>` pe PC) și nu face nimic altceva. Înlocuiește apăsarea pe Play din `bench.sh`.
-  Doar sesiunea Steam x86. 🟨 Netestat pe telefon: de verificat că Steam pornește Dota din link și în Big Picture.
-- **Pe PC:** `tools/fxctl/fxctl` (Python, doar biblioteca standard): `status`, `start steam`, `stop`, `fps`,
-  `screenshot out.png` (din `screencap` brut, fără PIL), `run <scenariu.json>`, `validate`.
-- **Scenarii** (`tools/fxctl/scenarios/`): pași `start_session`, `wait` (condiții: stare, proces, titlul ferestrei,
-  linie în jurnal, `grep` într-un fișier al aplicației, culoarea unui pixel, fps peste un prag, `all/any/not`),
-  `steam_url`, `measure_fps`, `drag_handle` (cursorul din replay, ca în `bench.sh`: găsit pe captură, mutat, verificat,
-  repetat). Variante A/B prin `files/session-env.txt` și `launch-options-<appid>.txt`, rulate în ordinea ABBA
-  (încălzirea telefonului cade pe ambele), cu medie, abatere, diferență și verdict: sub 10% (zgomotul din N-046) sau
-  t < 2 → „within noise”. Rezultatele în `build/fxctl/<nume>-<oră>/results.jsonl` plus capturile.
-- **Siguranță:** niciun pas de atingere, glisare sau tastă fără `expect` (scenariul nu se încarcă); înainte de
-  fiecare atingere: ecran pornit, deblocat, fexdroid în față, apoi condiția `expect` pe o captură sau o stare nouă.
-  Refuză dacă telefonul nu se încarcă sau bateria e sub prag (`--force` trece peste). Refuză un NVIDIA Shield.
-  `session-env.txt` și opțiunile de lansare scrise sunt puse la loc la final.
-- `tools/fxctl/scenarios/dota-replay-ab.json` e `bench.sh` mutat în scenariu; coordonatele sunt ale Realme-ului.
-  Teste pe PC: `python3 -m unittest discover -s tools/fxctl/tests` (26, cu un telefon simulat).
-- Pe telefon: procesul jocului apare ca `dota` (nu `dota2`), iar fereastra principală Steam are titlul X gol, deci
-  „Steam e gata” = procesul `steamwebhelper`. Comutatorul pentru Mesa `0008` există (`FEXDROID_NO_KGSL_POLL`).
-- De făcut: saltul în replay prin `demo_gototick` în loc de cursor (N-046) dacă se găsește o cale
-  fără consolă.
+## N-053 · Limita de procese copil reparată din aplicație, prin Depanarea wireless  ✅ emulator / 🧪 telefon (2026-10-11; pe Realme limita era deja oprită și aplicația o vede corect, fără dialog)
+- Idee din DroidDeck (GPL-3.0, fără cod copiat): aplicația se asociază cu propriul adbd prin Depanarea wireless
+  pe 127.0.0.1 și rulează ca utilizator shell `settings put global settings_enable_monitor_phantom_procs false`
+  (+ `device_config ... max_phantom_processes 2147483647`, singura cale pe Android 12).
+- Kadb respins: aduce spake2-java (GPL-3.0). Scris de la zero, MIT: `Spake2.kt` (SPAKE2 pe edwards25519 ca în
+  BoringSSL, inclusiv „password scalar hack”), `AdbWire.kt` (asociere: TLS 1.3 + 64 B exportați cu eticheta
+  `adb-label\0`, AES-128-GCM cu HKDF; conexiune: CNXN → STLS → TLS cu certificat client → `exec:`).
+  Conscrypt (Apache-2.0, +2,7 MB) dă exportul de cheie, ascuns în Conscrypt-ul din Android.
+- UI: dialog la „Pornește Steam” când limita e activă (și butonul „Repară automat” în Compatibilitate).
+  Codul se scrie într-o notificare (RemoteInput), ca fereastra cu codul din Setări să rămână deschisă; porturile
+  se găsesc prin mDNS (`_adb-tls-pairing._tcp`, `_adb-tls-connect._tcp`; `service.adb.tls.port` e interzis
+  aplicațiilor de SELinux). Câmpuri cod + port în aplicație pentru ecran împărțit. Depanarea wireless e oprită la
+  final dacă era oprită înainte. Setări deschise la rândul `toggle_adb_wireless` (cheia trebuie dată și în
+  `:settings:show_fragment_args`).
+- Verificat pe emulator API 34: userdebug (asociere de pe PC, test `AdbWireTest`, cod greșit respins, cod bun
+  acceptat) și **Play Store / build „user”, `ro.adb.secure=1`**: tot fluxul din aplicație (Opțiuni dezvoltator
+  oprite → Despre telefon → Depanare wireless → cod în notificare) a schimbat setarea (`false` /
+  `2147483647`) și a oprit Depanarea wireless. Pe Android 13+ cu targetSdk 28, permisiunea de notificări poate
+  lipsi: dialogul arată atunci butonul „Pornește notificările”.
+- Netestat pe telefon (Realme, Xiaomi, S26): ROM-uri cu Setări modificate (alte chei, alte texte), Android 12.
 
-## N-054 · Controllere: gamepad-urile telefonului ca /dev/input pentru Steam și jocuri  🧪 (testat pe PC, 2026-10-11; telefon: netestat)
+## N-054 · Controllere: gamepad-urile telefonului ca /dev/input pentru Steam și jocuri  🧪 (testat pe PC, 2026-10-11; pe Realme: Steam și Dota merg la fel cu patch-ul FEX, fără controller conectat)
 - **Ce lipsea:** aplicația trimitea doar tastatură, mouse și atingere (XTEST). Steam (Big Picture, Steam Input) și
   jocurile caută controllere în `/dev/input/event*` (SDL) sau prin `/dev/uinput`, pe care o aplicație Android nu le
   poate deschide. Ideea vine din DroidDeck (un emulator evdev prin LD_PRELOAD); implementarea e a noastră și alta:
@@ -1502,26 +1492,36 @@ Ideea din DroidDeck (`docs/agent-control.md`, `droiddeckctl`, scenarii JSON), sc
   verificat. SELinux ar putea refuza `connect()` între procesele aplicației pe un socket din `files/`; ambele părți
   rulează ca aceeași aplicație, deci nu ar trebui.
 
-## N-053 · Limita de procese copil reparată din aplicație, prin Depanarea wireless  ✅ emulator / 🧪 telefon (2026-10-11)
-- Idee din DroidDeck (GPL-3.0, fără cod copiat): aplicația se asociază cu propriul adbd prin Depanarea wireless
-  pe 127.0.0.1 și rulează ca utilizator shell `settings put global settings_enable_monitor_phantom_procs false`
-  (+ `device_config ... max_phantom_processes 2147483647`, singura cale pe Android 12).
-- Kadb respins: aduce spake2-java (GPL-3.0). Scris de la zero, MIT: `Spake2.kt` (SPAKE2 pe edwards25519 ca în
-  BoringSSL, inclusiv „password scalar hack”), `AdbWire.kt` (asociere: TLS 1.3 + 64 B exportați cu eticheta
-  `adb-label\0`, AES-128-GCM cu HKDF; conexiune: CNXN → STLS → TLS cu certificat client → `exec:`).
-  Conscrypt (Apache-2.0, +2,7 MB) dă exportul de cheie, ascuns în Conscrypt-ul din Android.
-- UI: dialog la „Pornește Steam” când limita e activă (și butonul „Repară automat” în Compatibilitate).
-  Codul se scrie într-o notificare (RemoteInput), ca fereastra cu codul din Setări să rămână deschisă; porturile
-  se găsesc prin mDNS (`_adb-tls-pairing._tcp`, `_adb-tls-connect._tcp`; `service.adb.tls.port` e interzis
-  aplicațiilor de SELinux). Câmpuri cod + port în aplicație pentru ecran împărțit. Depanarea wireless e oprită la
-  final dacă era oprită înainte. Setări deschise la rândul `toggle_adb_wireless` (cheia trebuie dată și în
-  `:settings:show_fragment_args`).
-- Verificat pe emulator API 34: userdebug (asociere de pe PC, test `AdbWireTest`, cod greșit respins, cod bun
-  acceptat) și **Play Store / build „user”, `ro.adb.secure=1`**: tot fluxul din aplicație (Opțiuni dezvoltator
-  oprite → Despre telefon → Depanare wireless → cod în notificare) a schimbat setarea (`false` /
-  `2147483647`) și a oprit Depanarea wireless. Pe Android 13+ cu targetSdk 28, permisiunea de notificări poate
-  lipsi: dialogul arată atunci butonul „Pornește notificările”.
-- Netestat pe telefon (Realme, Xiaomi, S26): ROM-uri cu Setări modificate (alte chei, alte texte), Android 12.
+## N-055 · Teste repetabile de pe PC: `tools/fxctl`, fără atingeri oarbe  ✅ (Realme GT, 2026-10-11: un A/B complet de 6 runde, nesupravegheat)
+Ideea din DroidDeck (`docs/agent-control.md`, `droiddeckctl`, scenarii JSON), scrisă de la zero; fexdroid rămâne MIT.
+- **În aplicație:** `ControlProvider.kt`, `content://ro.cobrabm.fexdroid.control`, doar pentru adb: manifestul cere
+  permisiunea DUMP (o are doar shell-ul adb, nicio aplicație) și codul verifică și uid-ul (2000 shell, 0 root).
+  `adb shell content call --uri content://ro.cobrabm.fexdroid.control --method status` → JSON. Metode: `status`
+  (starea sesiunii, versiunea, ce e instalat, contoarele de cadre), `counters` (contoarele `DisplayBridge`:
+  fps = diferența de changed + direct pe timp; aceleași cadre ca liniile `fexdroid-display` din logcat), `focus`
+  (fereastra X cu focus și titlul ei, prin `fxwmfit --focus-info`), `procs`, `perf` (`PerfSnapshot`), `log [n]`,
+  `report`, `stop`, `steam-url <link>`. Sesiunea pornește tot cu `am start ... --es action steam`.
+- **`steam-url`:** `fexdroid-steam.sh --url steam://rungameid/570` dă linkul Steam-ului care rulează (ca un al
+  doilea `steam.sh <link>` pe PC) și nu face nimic altceva. Înlocuiește apăsarea pe Play din `bench.sh`.
+  Doar sesiunea Steam x86. 🟨 Netestat pe telefon: de verificat că Steam pornește Dota din link și în Big Picture.
+- **Pe PC:** `tools/fxctl/fxctl` (Python, doar biblioteca standard): `status`, `start steam`, `stop`, `fps`,
+  `screenshot out.png` (din `screencap` brut, fără PIL), `run <scenariu.json>`, `validate`.
+- **Scenarii** (`tools/fxctl/scenarios/`): pași `start_session`, `wait` (condiții: stare, proces, titlul ferestrei,
+  linie în jurnal, `grep` într-un fișier al aplicației, culoarea unui pixel, fps peste un prag, `all/any/not`),
+  `steam_url`, `measure_fps`, `drag_handle` (cursorul din replay, ca în `bench.sh`: găsit pe captură, mutat, verificat,
+  repetat). Variante A/B prin `files/session-env.txt` și `launch-options-<appid>.txt`, rulate în ordinea ABBA
+  (încălzirea telefonului cade pe ambele), cu medie, abatere, diferență și verdict: sub 10% (zgomotul din N-046) sau
+  t < 2 → „within noise”. Rezultatele în `build/fxctl/<nume>-<oră>/results.jsonl` plus capturile.
+- **Siguranță:** niciun pas de atingere, glisare sau tastă fără `expect` (scenariul nu se încarcă); înainte de
+  fiecare atingere: ecran pornit, deblocat, fexdroid în față, apoi condiția `expect` pe o captură sau o stare nouă.
+  Refuză dacă telefonul nu se încarcă sau bateria e sub prag (`--force` trece peste). Refuză un NVIDIA Shield.
+  `session-env.txt` și opțiunile de lansare scrise sunt puse la loc la final.
+- `tools/fxctl/scenarios/dota-replay-ab.json` e `bench.sh` mutat în scenariu; coordonatele sunt ale Realme-ului.
+  Teste pe PC: `python3 -m unittest discover -s tools/fxctl/tests` (26, cu un telefon simulat).
+- Pe telefon: procesul jocului apare ca `dota` (nu `dota2`), iar fereastra principală Steam are titlul X gol, deci
+  „Steam e gata” = procesul `steamwebhelper`. Comutatorul pentru Mesa `0008` există (`FEXDROID_NO_KGSL_POLL`).
+- De făcut: saltul în replay prin `demo_gototick` în loc de cursor (N-046) dacă se găsește o cale
+  fără consolă.
 
 ## N-056 · Copierea cadrelor spre ecran: un rând dintr-o bucată, cu NEON  ✅ (Realme GT, 2026-10-11)
 - `display_bridge.c` copia pixel cu pixel. Pe drumul „cadre direct de la joc” fiecare pixel avea și verificări de
