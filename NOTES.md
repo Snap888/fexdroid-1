@@ -1532,3 +1532,21 @@ Ideea din DroidDeck (`docs/agent-control.md`, `droiddeckctl`, scenarii JSON), sc
   (2000 de rânduri aleatoare, 0 diferențe).
 - În joc înseamnă ~3% dintr-un nucleu la 20 fps, pe alt fir decât firul principal al lui Dota: efect mic asupra
   cadrelor. Pasul C din `docs/experiments/zero-copy-design.md` (ramura `dd-zero-copy-design`).
+
+## N-057 · GPU-ul la maxim rămâne; limita de 24 fps nu ajută  ✅ (Realme GT, 2026-10-11)
+Ipoteza: GPU-ul ținut la frecvența maximă (`TU_KGSL_PWR_CONSTRAINT=max`, N-037) încălzește telefonul și frânează
+procesorul, care e limita; după patch-ul Mesa `0008` ar fi putut conta mai puțin. Verificat cu
+`tools/fxctl/scenarios/dota-gpu-clock-fps-cap.json`: replay-ul Dota, 4 minute pe rundă, 4 variante × 2, ABBA,
+telefonul la priză (baterie 36–46 °C).
+
+| Variantă | fps (runde) | Limite procesor X1 / mari / mici (MHz, medie) |
+|---|---|---|
+| GPU la maxim (implicit) | **16,8** (18,0 · 15,6) | 1408–1415 / 1213–1429 / 1620–1804 |
+| GPU lăsat guvernorului | 13,3 (13,2 · 13,4) | 1305–1420 / 1209–1324 / 1612–1804 |
+| GPU la maxim + `fps_max 24` | 16,3 (16,4 · 16,3) | 1400–1420 / 1209–1228 / 1612–1644 |
+| GPU guvernor + `fps_max 24` | 13,0 (13,0 · 13,0) | 1305–1420 / 1209–1324 / 1612–1804 |
+
+- **Ipoteza nu se confirmă:** fără constrângere GPU-ul e cu ~21% mai lent, iar procesorul nu primește frecvențe mai
+  mari (limitele sunt aceleași în ambele variante). Setarea rămâne pornită implicit.
+- **`fps_max 24` nu schimbă nimic:** încins, jocul nu ajunge la 24, deci limita nu are ce tăia.
+- La rece prima rundă pornește de la 21–22 fps și coboară la 14–16 în 3–4 minute: căldura rămâne factorul principal.
