@@ -13,3 +13,4 @@ app/.cxx/
 .env
 .env.*
 docs/recon/*.txt
+__pycache__/

@@ -16,6 +16,19 @@ LIB="$FXD_FILES/steamlib"
 FEX="$FXD_ROOT/usr/bin/FEX"
 log() { echo "[fexdroid-steam] $*"; }
 
+# `fexdroid-steam.sh --url steam://rungameid/570` (the app, for tools/fxctl): hands the link to
+# the Steam that already runs, as a second `steam.sh <link>` does on a PC, and does nothing else.
+if [ "${1:-}" = "--url" ]; then
+    url="${2:?--url needs a steam:// link}"
+    export STEAM_RUNTIME_STEAMRT="$SHIM_DIR" STEAMOS=1 STEAM_RUNTIME=1 PRESSURE_VESSEL_BATCH=1 STEAM_RUNTIME_LOGGER=0
+    export TMPDIR="${TMPDIR:-$FXD_ROOT/tmp}" SDL_VIDEODRIVER=x11
+    export PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+    [ -x "$STEAMROOT/steam.sh" ] || { log "Steam is not installed"; exit 1; }
+    log "handing $url to the running Steam"
+    cd "$STEAMROOT"
+    exec "$FEX" "$STEAMROOT/steam.sh" "$url"
+fi
+
 mkdir -p "$STEAMROOT" "$LIB/steamapps/common" "$HOME/.steam"
 
 # 1) Client files.

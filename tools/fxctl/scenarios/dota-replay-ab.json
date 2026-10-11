@@ -1,0 +1,42 @@
+{
+  "name": "dota-replay-ab",
+  "description": "Dota 2 replay benchmark (was build/measure/bench.sh): a fresh Steam session per round, Dota started through steam://rungameid/570 with the replay as launch option, the timeline dragged to the same late moment (checked on a screenshot, repeated when it does not take), then 60 s of frame counts. Variants differ only in files/session-env.txt, which the app reads when the session starts.",
+  "note": "Screen coordinates are the Realme GT's (2400x1080, landscape, picture fitted). The replay file must exist in Dota's replays/ folder.",
+  "repeat": 3,
+  "order": "abba",
+  "noise_pct": 10,
+  "requires_charging": true,
+  "min_battery": 40,
+  "session_env": ["FEX_PROFILESTATS=1"],
+  "launch_options": {"570": "-condebug +fps_max 120 +playdemo replays/9020144444.dem"},
+  "variants": [
+    {"name": "relaxed", "note": "the app's default present mode"},
+    {"name": "fifo", "session_env": ["MESA_VK_WSI_PRESENT_MODE=fifo"]}
+  ],
+  "run": [
+    {"do": "stop_session", "settle": 8},
+    {"do": "apply_variant"},
+    {"do": "remove_file", "path": "steamlib/steamapps/common/dota 2 beta/game/dota/console.log"},
+    {"do": "start_session", "game": "steam"},
+    {"do": "wait", "until": {"state": "Running", "game": "steam"}, "timeout": 120, "interval": 5},
+    {"do": "wait", "until": {"focus": "Steam"}, "timeout": 300, "interval": 10, "note": "Steam's window is up"},
+    {"do": "sleep", "seconds": 20, "note": "Steam finishes logging in"},
+    {"do": "steam_url", "url": "steam://rungameid/570"},
+    {"do": "wait", "until": {"process": "dota2"}, "timeout": 180, "interval": 10},
+    {"do": "wait", "until": {"guest_grep": {"file": "steamlib/steamapps/common/dota 2 beta/game/dota/console.log",
+                                             "pattern": "LoadingDisplay changed from LOADING to NONE"}},
+     "timeout": 400, "interval": 5, "note": "the replay has loaded"},
+    {"do": "sleep", "seconds": 15},
+    {"do": "drag_handle", "row_y": 239, "x_range": [2085, 2300], "to_x": 2262, "accept_min_x": 2230,
+     "source": "mouse", "retries": 3, "settle": 8,
+     "expect": {"all": [{"focus": "Dota"}, {"process": "dota2"}]},
+     "note": "seek to the same late moment of the match"},
+    {"do": "sleep", "seconds": 22},
+    {"do": "screenshot", "save": "start"},
+    {"do": "measure_fps", "seconds": 60, "label": "replay"},
+    {"do": "kill_process", "match": "linuxsteamrt64/dota2"}
+  ],
+  "teardown": [
+    {"do": "kill_process", "match": "linuxsteamrt64/dota2"}
+  ]
+}
