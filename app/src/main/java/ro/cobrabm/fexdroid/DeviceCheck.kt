@@ -25,7 +25,7 @@ object DeviceCheck {
 
     /** Does file I/O and starts small helper processes: call off the main thread. */
     fun run(ctx: Context): List<Item> = listOf(
-        abi(), pageSize(), cpu(), gpu(), kernel(), android(ctx), memory(ctx), storage(ctx), phantomProcesses(),
+        abi(), pageSize(), cpu(), gpu(), kernel(), android(ctx), memory(ctx), storage(ctx), phantomProcesses(ctx),
     )
 
     fun report(items: List<Item>): String = buildString {
@@ -134,12 +134,12 @@ object DeviceCheck {
     }
 
     /** Android 12+ kills "phantom" child processes beyond a limit (32); Steam starts many. */
-    private fun phantomProcesses(): Item {
+    private fun phantomProcesses(ctx: Context): Item {
         val title = str(R.string.check_phantom)
-        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return Item(Level.OK, title, str(R.string.check_phantom_none))
-        val max = Recon.runCmd("/system/bin/device_config", "get", "activity_manager", "max_phantom_processes").trim().toIntOrNull()
-        return if (max != null && max >= 1024) Item(Level.OK, title, str(R.string.check_phantom_off, max))
-        else Item(Level.INFO, title,
-            str(R.string.check_phantom_on, max ?: 32))
+        return when (PhantomFix.status(ctx)) {
+            PhantomFix.Status.NOT_NEEDED -> Item(Level.OK, title, str(R.string.check_phantom_none))
+            PhantomFix.Status.OFF -> Item(Level.OK, title, str(R.string.check_phantom_switched_off))
+            else -> Item(Level.INFO, title, str(R.string.check_phantom_on, 32))
+        }
     }
 }

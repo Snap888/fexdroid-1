@@ -37,5 +37,7 @@
                 android:value="Runs a user-started Linux game (x86 emulation) while the app is in the background" />
         </service>
         <receiver android:name=".UpdateReceiver" android:exported="false" />
+        <!-- The Wireless debugging pairing code typed into PhantomFix's notification. -->
+        <receiver android:name=".PhantomFixReceiver" android:exported="false" />
     </application>
 </manifest>

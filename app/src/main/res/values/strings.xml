@@ -27,7 +27,6 @@
     <string name="check_pages_bad">%1$d KB: FEX works with 4 KB pages only.</string>
     <string name="check_phantom">Limit of child processes</string>
     <string name="check_phantom_none">There is none before Android 12.</string>
-    <string name="check_phantom_off">Switched off (%1$d)</string>
     <string name="check_phantom_on">Android may stop Steam (limit %1$d). Switch it off in Developer options › “Disable child process restrictions”, or from a PC: adb shell device_config put activity_manager max_phantom_processes 2147483647</string>
     <string name="check_storage">Free space</string>
     <string name="check_storage_low">%1$d GB: the Linux environment and Steam need about 5 GB, games need tens of GB.</string>
@@ -215,4 +214,43 @@
     <string name="update_mismatch">The downloaded file is not the published one. Try again.</string>
     <string name="update_other_key">The installed version is signed with another key than the new one, so Android cannot replace it. Once only: uninstall the app and install it again from GitHub. (%1$s)</string>
     <string name="update_stop_game_first">Stop the game before updating.</string>
+
+    <!-- PhantomFix: switching off Android's child-process limit through Wireless debugging -->
+    <string name="phantom_gate_title">Android may stop Steam</string>
+    <string name="phantom_gate_text">Android 12 and newer stop an app\'s child processes above a limit (32). Steam starts many, so it can close by itself, with no error. fexdroid can switch the limit off, once, without a PC.</string>
+    <string name="phantom_gate_unknown">On Android 12 fexdroid cannot read this setting. If Steam closes by itself, switch the limit off.</string>
+    <string name="phantom_auto_title">Fix automatically</string>
+    <string name="phantom_auto_step1">1. Connect to Wi-Fi. Press Start: Developer options open; turn on Wireless debugging there (allow it on this network).</string>
+    <string name="phantom_auto_step1_devoff">Developer options are off: Start opens About phone; tap Build number 7 times, then come back and press Start again.</string>
+    <string name="phantom_auto_step2">2. Open Wireless debugging › Pair device with pairing code. Pull down the notifications and type the 6-digit code into fexdroid\'s notification, without closing the code window.</string>
+    <string name="phantom_start_fix">Start</string>
+    <string name="phantom_waiting">Waiting for the code in the notification…</string>
+    <string name="phantom_waiting_port">Pairing window found (port %1$d). Waiting for the code…</string>
+    <string name="phantom_manual_entry">Or type the code (and the port after the colon) here, in split screen:</string>
+    <string name="phantom_code_label">Pairing code</string>
+    <string name="phantom_port_label">Port (optional)</string>
+    <string name="phantom_pair_button">Pair</string>
+    <string name="phantom_manual_title">Manually</string>
+    <string name="phantom_manual_toggle">Android 14 and newer: Developer options › Disable child process restrictions.</string>
+    <string name="phantom_manual_pc">From a PC with adb:</string>
+    <string name="phantom_dont_ask">Don\'t ask again</string>
+    <string name="phantom_start_anyway">Start Steam anyway</string>
+    <string name="phantom_start_now">Start Steam</string>
+    <string name="phantom_close">Close</string>
+    <string name="phantom_notifications_on">Turn on notifications</string>
+    <string name="phantom_notifications_off">fexdroid\'s notifications are off: type the code below instead, with the screen split between Settings and fexdroid.</string>
+    <string name="phantom_channel">Child-process limit fix</string>
+    <string name="phantom_notify_title">fexdroid: Wireless debugging pairing</string>
+    <string name="phantom_notify_code">Type the 6-digit code from Settings › Wireless debugging › Pair device with pairing code. Keep that window open.</string>
+    <string name="phantom_code_action">Enter code</string>
+    <string name="phantom_step_pairing">Pairing…</string>
+    <string name="phantom_step_connecting">Connecting…</string>
+    <string name="phantom_step_changing">Switching the limit off…</string>
+    <string name="phantom_done">Done: Android no longer stops Steam\'s processes.</string>
+    <string name="phantom_err_code">The code was not accepted. Check it and try again (the window shows a new code each time it opens).</string>
+    <string name="phantom_err_code_format">The code has 6 digits.</string>
+    <string name="phantom_err_no_pairing">The pairing window was not found. Open Pair device with pairing code and try again, or type its port in fexdroid.</string>
+    <string name="phantom_err_no_connect">Paired, but the Wireless debugging connection was not found. Check that it is still on and try again.</string>
+    <string name="phantom_err_not_confirmed">Android did not confirm the change (%1$s).</string>
+    <string name="check_phantom_switched_off">Switched off</string>
 </resources>
