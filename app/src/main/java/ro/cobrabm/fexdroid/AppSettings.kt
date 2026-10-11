@@ -92,6 +92,8 @@ object AppSettings {
     var limitVideoMemory by mutableStateOf(false); private set
     /** A game's frames come straight from Mesa, not through the X server (tools/fxpresent). */
     var directFrames by mutableStateOf(false); private set
+    /** Bluetooth/USB gamepads reach Steam and the games as Xbox 360 pads (Gamepads, NOTES N-054). */
+    var gamepads by mutableStateOf(true); private set
     /** Source 2 games' own libraries run without TSO emulation (FexConfig.SOURCE2_WITHOUT_TSO). */
     var source2WithoutTso by mutableStateOf(false); private set
     /** Keys at the sides of the picture (OnScreenKeys); the picture is narrower by their width. */
@@ -132,6 +134,7 @@ object AppSettings {
         // Off unless chosen: what it saves is small, and a game that needs more than the limit ends.
         limitVideoMemory = prefs.getBoolean("limit_video_memory", false)
         directFrames = prefs.getBoolean("direct_frames", false)
+        gamepads = prefs.getBoolean("gamepads", true)
         source2WithoutTso = prefs.getBoolean("source2_without_tso", false)
         fexProfile = runCatching { FexProfile.valueOf(prefs.getString("fex_profile", null) ?: "BALANCED") }
             .getOrDefault(FexProfile.BALANCED)
@@ -172,6 +175,7 @@ object AppSettings {
     fun updateSteamBigPicture(v: Boolean) { steamBigPicture = v; prefs.edit().putBoolean("steam_big_picture", v).apply() }
     fun updateSource2WithoutTso(v: Boolean) { source2WithoutTso = v; prefs.edit().putBoolean("source2_without_tso", v).apply() }
     fun updateDirectFrames(v: Boolean) { directFrames = v; prefs.edit().putBoolean("direct_frames", v).apply() }
+    fun updateGamepads(v: Boolean) { gamepads = v; prefs.edit().putBoolean("gamepads", v).apply() }
     fun updateLimitVideoMemory(v: Boolean) { limitVideoMemory = v; prefs.edit().putBoolean("limit_video_memory", v).apply() }
     fun updateThreadPlacement(v: Boolean) { threadPlacement = v; prefs.edit().putBoolean("thread_placement", v).apply() }
     fun updateGpuMaxFrequency(v: Boolean) { gpuMaxFrequency = v; prefs.edit().putBoolean("gpu_max_frequency", v).apply() }

@@ -117,6 +117,9 @@ fun SettingsScreen() {
                 SwitchSetting(str(R.string.settings_big_picture),
                     str(R.string.settings_big_picture_about),
                     AppSettings.steamBigPicture, AppSettings::updateSteamBigPicture)
+                SwitchSetting(str(R.string.settings_gamepads), str(R.string.settings_gamepads_about),
+                    AppSettings.gamepads, AppSettings::updateGamepads)
+                if (GameSession.active) Note(str(R.string.settings_after_restart))
                 SwitchSetting(
                     str(R.string.settings_without_steam),
                     str(R.string.settings_without_steam_about),

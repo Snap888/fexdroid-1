@@ -115,6 +115,7 @@ object GameSession {
         appendLine("device: ${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}, " +
             "Android ${android.os.Build.VERSION.RELEASE} (API ${android.os.Build.VERSION.SDK_INT}), $soc")
         appendLine("screen: ${resolution.label}, state: $state")
+        appendLine("gamepads: ${Gamepads.describe()}")
         // Most useful first: messages get cut off on the way (chat apps, clipboards).
         if (state is SessionState.Running) append(runCatching { PerfSnapshot.take(env, resolution.label) }
             .getOrElse { "---- performance ----\nfailed: $it\n" })
@@ -284,6 +285,8 @@ object GameSession {
                             ", frames straight from the game ${if (AppSettings.directFrames) "on" else "off"}")
                     }
                     .onFailure { append("FEX: cannot write Config.json: $it") }
+                // Gamepads as /dev/input for FEX's guests (FEX patch 0006, NOTES N-054).
+                if (AppSettings.gamepads) Gamepads.start(ctx.applicationContext, File(env.root, "usr/share/fex-emu/fexdroid-input"), ::append)
                 if (!current()) return@thread xs.stopAll()
                 step(StartStep.DISPLAY)
                 if (!xs.startX()) return@thread fail(str(R.string.fail_display))
@@ -348,6 +351,7 @@ object GameSession {
         synchronized(this) { generation++ }
         ThreadTuner.stop()
         MemoryWatch.stop()
+        Gamepads.stop()
         DisplayBridge.stop()
         bridgeOn = false
         inputReady = false

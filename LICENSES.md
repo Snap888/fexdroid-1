@@ -6,7 +6,7 @@ Orice conflict îl semnalez înainte de integrare.
 | Componentă | Licență | Cum o folosim | Obligații / riscuri |
 |---|---|---|---|
 | Cod propriu fexdroid | MIT (decis 2026-09-25) | — | — |
-| FEX-Emu | MIT | binar în rootfs ARM64, compilat de noi | păstrat textul licenței |
+| FEX-Emu | MIT | binar în rootfs ARM64, compilat de noi; patch-urile `patches/fex/` sunt ale noastre (0006: controllere, idee din DroidDeck, scris independent, fără cod copiat) | păstrat textul licenței |
 | Mesa (Turnip) | MIT (în mare parte; unele fișiere BSD/Khronos) | `libvulkan_freedreno.so` | păstrat textul licenței |
 | Patch-uri Mesa (`patches/mesa/`) | MIT | 0002–0004 = backport-uri neschimbate din Mesa `main` (commit-uri `c96b2e4c`, `35f59101`, `118ec7f4`); 0001 și 0005–0008 = patch-uri proprii fexdroid (0008: ideea din DroidDeck/Bannerlator „kgslpoll”, scrisă independent, fără cod copiat) | aceeași licență ca Mesa; niciun patch din repo-urile comunității (mesa-unified / Banners-Turnip) nu a fost preluat (vezi NOTES N-015) |
 | glibc | LGPL-2.1+ | în rootfs, posibil patch-uit | oferim sursa + patch-urile noastre |

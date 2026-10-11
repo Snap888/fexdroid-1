@@ -1460,3 +1460,44 @@ Ideea din DroidDeck (`docs/agent-control.md`, `droiddeckctl`, scenarii JSON), sc
   „Steam e gata” = procesul `steamwebhelper`. Comutatorul pentru Mesa `0008` există (`FEXDROID_NO_KGSL_POLL`).
 - De făcut: saltul în replay prin `demo_gototick` în loc de cursor (N-046) dacă se găsește o cale
   fără consolă.
+
+## N-054 · Controllere: gamepad-urile telefonului ca /dev/input pentru Steam și jocuri  🧪 (testat pe PC, 2026-10-11; telefon: netestat)
+- **Ce lipsea:** aplicația trimitea doar tastatură, mouse și atingere (XTEST). Steam (Big Picture, Steam Input) și
+  jocurile caută controllere în `/dev/input/event*` (SDL) sau prin `/dev/uinput`, pe care o aplicație Android nu le
+  poate deschide. Ideea vine din DroidDeck (un emulator evdev prin LD_PRELOAD); implementarea e a noastră și alta:
+  emularea stă în FEX, deci merge la fel pentru programele de 64 și de 32 de biți (clientul Steam e pe 32).
+- **Cum merge:**
+  - Aplicația (`cpp/pad_bridge.c`, `Gamepads.kt`) dă fiecărui controller Android (Bluetooth/USB, sursă GAMEPAD sau
+    JOYSTICK) un socket `SOCK_SEQPACKET` în `rootfs/usr/share/fex-emu/fexdroid-input/event200`, `event201`... (cel
+    mult 4). Directorul se face la pornirea sesiunii; un controller conectat mai târziu primește nod atunci.
+  - FEX (patch `0006-android-gamepads.patch`, `AndroidInputPad.h`) arată acel director programelor ca `/dev/input`
+    (open, stat, scandir, inotify). Un `open()` pe `event2xx` se conectează la socket și spune ce `struct
+    input_event` folosește programul (24 de octeți pe x86-64, 16 pe i386). Ioctl-urile `EVIOC*` le răspunde FEX:
+    un „Microsoft X-Box 360 pad” (045e:028e, versiunea 0x114), exact ce descrie driverul `xpad` din kernel, pe care
+    SDL și Steam îl cunosc fără configurare. `stat`/`fstat` dau dispozitiv caracter 13:(64+N), după care SDL
+    deosebește dispozitivele. Fără vibrații (EV_FF nu e anunțat).
+  - Evenimentele: butoanele (A/B/X/Y, LB/RB, Back/Select, Start, Home, stick-urile apăsate) → `BTN_*`; stick-urile
+    → `ABS_X/Y/RX/RY` (−32768..32767); trăgacele → `ABS_Z/RZ` (0..255; și cele digitale L2/R2); D-pad-ul (taste
+    sau axe HAT) → `ABS_HAT0X/Y`. Stick-ul drept e pe Z/RZ la majoritatea controllerelor; pe RX/RY doar la cele
+    fără trăgace analogice. Cât rulează o sesiune, butoanele controllerului nu mai ajung la serverul X ca taste.
+  - Setarea: Setări › Joc › „Controllere (experimental)”, pornită implicit; are efect la următoarea pornire.
+    Raportul are un rând `gamepads:` (ce controllere, câte programe le-au deschis).
+- **Patch FEX 0007:** `thunkgen` nu se mai compila cu clang 23 de pe PC (`FileManager::clearStatCache` scos din
+  clang); apelul e sărit pentru LLVM ≥ 23. Fără el `scripts/build-fex.sh` se oprea la thunkgen.
+- **Testat pe PC** (`tests/gamepad/run-host.sh`, cu ASan/UBSan): podul aplicației (prin un JNIEnv fals) și partea
+  din FEX (`AndroidInputPad.h`) vorbind între ele nativ: maparea `/dev/input`, ioctl-urile, `fstat`, ambele formate
+  de evenimente, scrierile programului ignorate, deconectarea și reconectarea. 37 de verificări, toate trec.
+  FEX întreg nu rulează sub qemu-user (N-011), deci legarea în apelurile de sistem ale FEX e verificată doar prin
+  compilare. `tests/gamepad/padprobe.c` face ce face SDL (scandir, stat, open, ioctl, read), pentru telefon.
+- **De testat pe telefon** (controller Bluetooth conectat înainte de pornire):
+  1. Raportul: `gamepads: <nume> = event200, open by N`; logcat `-s fexdroid-pad` arată „a 32-bit program opened
+     it” când pornește Steam.
+  2. Steam Big Picture: Setări › Controller vede un controller Xbox 360; navigarea cu el merge.
+  3. Dota 2: controllerul prin Steam Input (Dota nu citește singur `/dev/input`).
+  4. Deconectat și reconectat în timpul sesiunii: SDL citește directorul la câteva secunde (prin `stat` pe
+     `/dev/input` sau inotify), deci ar trebui să-l vadă din nou.
+  5. `padprobe` static (x86-64 și `-m32`) rulat sub FEX în sandbox-ul aplicației, cu sesiunea pornită.
+- **Riscuri cunoscute:** dacă Steam Input vrea să creeze controllere virtuale prin `/dev/uinput` (inexistent aici)
+  și ascunde controllerul real jocurilor (`SDL_GAMECONTROLLER_IGNORE_DEVICES`), jocurile SDL nu-l mai văd; de
+  verificat. SELinux ar putea refuza `connect()` între procesele aplicației pe un socket din `files/`; ambele părți
+  rulează ca aceeași aplicație, deci nu ar trebui.

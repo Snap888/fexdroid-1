@@ -89,6 +89,7 @@ class MainActivity : ComponentActivity() {
      * every generic motion event).
      */
     override fun dispatchGenericMotionEvent(ev: android.view.MotionEvent): Boolean {
+        if (GameSession.active && !InputSurfaceView.overlayOpen && Gamepads.onMotion(ev)) return true
         val view = InputSurfaceView.current
         val handled = super.dispatchGenericMotionEvent(ev)
         if (view == null || !view.inputEnabled || InputSurfaceView.overlayOpen ||
@@ -126,6 +127,8 @@ class MainActivity : ComponentActivity() {
 
     /** A mouse's second button arrives as the Back key: see [InputSurfaceView.mouseBackKey]. */
     override fun dispatchKeyEvent(ev: android.view.KeyEvent): Boolean {
+        // Gamepad buttons go to the guests' gamepad, never to the X server (Gamepads).
+        if (GameSession.active && !InputSurfaceView.overlayOpen && Gamepads.onKey(ev)) return true
         val view = InputSurfaceView.current
         if (view != null && view.inputEnabled && !InputSurfaceView.overlayOpen &&
             ev.keyCode == android.view.KeyEvent.KEYCODE_BACK && ev.isFromSource(android.view.InputDevice.SOURCE_MOUSE)) {

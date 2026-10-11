@@ -164,6 +164,8 @@
     <string name="settings_install_3">Steam îl descarcă de la Valve la prima pornire (~2 GB, câteva minute). Apoi te autentifici.</string>
     <string name="settings_install_4">În Steam: Store › Dota 2 › Play Game › Install. Cam 70 GB; descărcarea continuă cu aplicația în fundal.</string>
     <string name="settings_install_note">Totul se instalează pe telefon, fără PC. Aplicația nu conține nimic de la Valve: Steam și jocurile se descarcă de la Valve, cu contul tău. Folosește Wi-Fi și ține telefonul la încărcat.</string>
+    <string name="settings_gamepads">Controllere (experimental)</string>
+    <string name="settings_gamepads_about">Controllerele Bluetooth sau USB conectate la telefon ajung la Steam și la jocuri ca niște controllere Xbox 360. Butoanele lor nu mai lucrează ca taste.</string>
     <string name="settings_keys">Taste pe ecran</string>
     <string name="settings_keys_about">Taste în stânga și în dreapta imaginii, care se îngustează ca să le facă loc. Se pot arăta și ascunde și din meniul din joc.</string>
     <string name="settings_keys_default">Înapoi la tastele pentru Dota 2</string>
