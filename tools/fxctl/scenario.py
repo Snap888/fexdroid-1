@@ -24,7 +24,7 @@ STEPS = {
     "stop_session": ((), ("settle",)),
     "start_session": (("game",), ()),
     "apply_variant": ((), ()),
-    "steam_url": (("url",), ()),
+    "steam_url": (("url",), ("until", "timeout", "resend_every")),
     "wait": (("until",), ("timeout", "interval")),
     "assert": (("that",), ()),
     "sleep": (("seconds",), ()),
@@ -357,7 +357,7 @@ class Runner:
                     else:
                         self.dev.write_app_file(rel, self._restore[rel])
         elif kind == "steam_url":
-            self.dev.steam_url(st["url"])
+            self.steam_url(st)
         elif kind == "wait":
             seen = self.wait_for(st["until"], st.get("timeout", 60), st.get("interval", 5))
             self.out(f"   ok: {seen}")
@@ -400,6 +400,25 @@ class Runner:
             self.dev.input("keyevent", st["key"])
         elif kind == "drag_handle":
             self.drag_handle(st)
+
+    def steam_url(self, st):
+        """The link, and with "until" sent again every resend_every seconds until the condition
+        holds: a client that is still starting can drop it (the arm64 one, from its pipe)."""
+        self.dev.steam_url(st["url"])
+        if "until" not in st:
+            return
+        deadline = self.clock() + st.get("timeout", 180)
+        every = st.get("resend_every", 60)
+        while True:
+            try:
+                seen = self.wait_for(st["until"], min(every, max(1, deadline - self.clock())), 10)
+                self.out(f"   ok: {seen}")
+                return
+            except StepFailed:
+                if self.clock() >= deadline:
+                    raise
+                self.out("   sent again")
+                self.dev.steam_url(st["url"])
 
     def drag_handle(self, st):
         """A slider (Dota's replay timeline): find the handle as the brightest spot on its row,

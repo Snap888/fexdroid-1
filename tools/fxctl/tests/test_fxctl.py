@@ -321,6 +321,23 @@ class Running(unittest.TestCase):
         with self.assertRaises(scenario.ScenarioError):
             scenario.validate({"name": "x", "run": [], "variants": [{"name": "a", "game": "wine"}]})
 
+    def test_steam_url_resent(self):
+        phone = FakePhone()
+        phone.state = "Running"
+        sent = []
+        def steam_url(url):
+            sent.append(url)
+            if len(sent) == 2:  # the first one was dropped by a client still starting
+                phone.game_started = True
+        phone.steam_url = steam_url
+        sc = scenario.validate({"name": "x", "run": [{"do": "steam_url", "url": "steam://rungameid/570",
+                                "until": {"process": "^dota$"}, "timeout": 300, "resend_every": 60}]})
+        with tempfile.TemporaryDirectory() as d:
+            r, _ = fast_runner(phone, sc, d)
+            r.run()
+        self.assertEqual(len(sent), 2)
+        self.assertEqual(r.failures, [])
+
     def test_memory_step(self):
         phone = FakePhone()
         sc = scenario.validate({"name": "x", "run": [{"do": "memory", "match": "dota2"}]})

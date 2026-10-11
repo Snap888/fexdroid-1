@@ -70,15 +70,13 @@
     },
     {
       "do": "steam_url",
-      "url": "steam://rungameid/570"
-    },
-    {
-      "do": "wait",
+      "url": "steam://rungameid/570",
       "until": {
         "process": "^dota$"
       },
-      "timeout": 180,
-      "interval": 10
+      "timeout": 300,
+      "resend_every": 60,
+      "note": "sent again while the client is still starting"
     },
     {
       "do": "wait",

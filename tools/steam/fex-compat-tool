@@ -20,6 +20,8 @@ for v in LD_LIBRARY_PATH LD_PRELOAD LIBGL_DRIVERS_PATH LIBGL_ALWAYS_SOFTWARE LP_
     esac
     unset "FXD_GAMEENV_$v"
 done
+# For _v2-entry-point: it runs natively here, not in FEX as under the x86 client.
+export FXD_FROM_ARM64_CLIENT=1
 while [ $# -gt 0 ]; do
     case "$1" in
         --) shift; break ;;
