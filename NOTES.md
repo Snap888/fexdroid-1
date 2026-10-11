@@ -1593,3 +1593,46 @@ Verificat în timpul rundei „fără așezare”: toate firele jocului pe 0–7
 
   Nicio diferență: memoria jocului e folosită de-adevăratelea. Rămâne cum a lăsat-o Valve.
 - Ce se mai poate lua: memoria clientului Steam (N-060) și puțin din FEX.
+
+## N-060 · Clientul Steam nativ ARM64 pornește jocuri x86: Dota din el, cu ~1 GB mai puțin consumat  ✅/🧪 (Realme GT, 2026-10-11)
+- **Cum pornește Valve un joc x86 din clientul ARM64** (`compat_log.txt`): prin unealta „fex” (aplicația
+  3127680, `FEX-Emu/fex-compat-tool`, un script Python cu FEX-ul lui Valve) urmată de runtime-uri: Dota
+  `fex-compat-tool run -- SteamLinuxRuntime_sniper/_v2-entry-point -- dota.sh`, jocurile vechi prin soldier +
+  scout. Clientul ARM64 are și un `linux64/steamclient.so` x86-64, la care se conectează jocul.
+- **La noi:** `tools/steam/fex-compat-tool` (al nostru) pune la loc mediul de dinainte de client (bibliotecile
+  arm64, GL-ul software și `libfxpath` sunt doar pentru client, păstrate în `FXD_GAMEENV_*`) și semnalează
+  `_v2-entry-point`-ului că rulează nativ; acesta dă scriptul jocului FEX-ului nostru, care citește `#!` și îl
+  rulează în runtime-ul x86 (`sniper-rootfs`). `fexdroid-steam-arm64.sh` înlocuiește cele trei verigi ale lui
+  Valve (și în bibliotecile care apar ulterior), face legăturile `~/.steam/sdk64`, `sdkarm64`, `bin64`...,
+  adaugă biblioteca clientului x86 (`files/steamlib`, cu Dota) ca a doua bibliotecă, ia setările video ale
+  jocurilor de la clientul x86 și oprește pre-compilarea shaderelor.
+- ⚠ **`uname -m` sub FEX răspunde `aarch64`**, deci nu deosebește cele două cazuri: prima variantă pornea Dota
+  și sub clientul x86 printr-un al doilea FEX. Acum semnalul e o variabilă (`FXD_FROM_ARM64_CLIENT`).
+- ⚠ **`LD_PRELOAD`:** clientul își pune bibliotecile în față fără separator; al nostru începe cu `:`.
+- ✅ **Pe Realme:** Hacker Evolution Duality (x86, 149 MB) rulează din clientul ARM64; **Dota ajunge în meniu,
+  conectat, și rulează replay-ul**, fără să fie descărcat din nou (manifestul neschimbat, `buildid` același).
+- ⚠ **Setările video sunt ale fiecărui client** (`userdata/<cont>/570/local/cfg/video.txt`): prima dată Dota a
+  pornit cu cele implicite (1584×720, fără FSR, umbre, ceață), cu 1,2 GB mai mult și 13,5 fps, până la
+  închiderea de către kernel (OOM). Launcher-ul le ia acum pe cele de la clientul x86.
+- **Măsurat cu `tools/fxctl/scenarios/dota-steam-client-ab.json`** (aceleași setări, replay 150 s, telefon
+  încins 40–45 °C):
+
+  | | fps | jocul (RAM + swap) | memorie disponibilă după | swap liber după |
+  |---|---|---|---|---|
+  | client x86 | 16,5 · 17,7 | 6,4 → 6,5 GB | 0,57 · 0,89 GB | 1,02 GB |
+  | client ARM64 | 17,5 · 17,3 | 6,3 → 6,5 GB | 1,90 · 1,98 GB | 1,38 · 1,27 GB |
+
+  Cadrele sunt la fel (în zgomot); telefonul rămâne cu **~1,1–1,4 GB mai multă memorie disponibilă**. Clientul
+  singur: 0,93 GB (RAM + swap) cu Dota pornit, față de ~1,8 GB clientul x86; 1,5 GB cu Magazinul deschis, față
+  de 2,9 GB (N-046).
+- 🟨 Jocul are seara 6,3–6,5 GB și sub clientul x86, față de 5,5–5,8 la prânz (N-059); nu am găsit de ce
+  (fișierele de setări ale clientului x86 sunt aceleași). În două runde x86 kernelul a închis Dota (OOM) la
+  final.
+- 🟨 **Schimbarea clientului:** după ce contul a fost folosit în clientul ARM64, clientul x86 a rămas la
+  „Loading user data…” peste 5 minute de mai multe ori (rundele x86 din `fxctl` eșuate). De văzut dacă trece
+  singur; pentru teste, câte un client pe rând, nu alternat.
+- `fxctl`: variantele pot alege clientul (`"game": "steam-arm64"`); linkurile `steam://` ajung la clientul
+  ARM64 prin `~/.steam/steam.pipe` (`steam <link>`, ca la a doua pornire a clientului lui Valve);
+  `steam_url` cu `until` retrimite linkul cât clientul încă pornește.
+- 🟨 Scripturile sunt copiate de mână pe Realme; într-o versiune nouă intră prin `scripts/build-payload.sh`.
+  Netestat pe alt telefon. Setarea clientului ARM64 rămâne „experiment”.
