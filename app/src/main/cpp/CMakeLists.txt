@@ -13,5 +13,6 @@ add_library(fxdisplay SHARED display_bridge.c)
 target_link_libraries(fxdisplay android log)
 
 # JNI library: phase 4 input (XTEST client) and audio (PulseAudio FIFO -> AAudio).
-add_library(fxio SHARED x11_input.c audio_bridge.c sched.c)
+# ... and gamepads as /dev/input for FEX guests (FEX patch 0006).
+add_library(fxio SHARED x11_input.c audio_bridge.c sched.c pad_bridge.c)
 target_link_libraries(fxio aaudio log)

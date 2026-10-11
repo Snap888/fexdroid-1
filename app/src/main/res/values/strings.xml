@@ -164,6 +164,8 @@
     <string name="settings_install_3">Steam downloads it from Valve when it starts for the first time (about 2 GB, a few minutes). Then sign in.</string>
     <string name="settings_install_4">In Steam: Store › Dota 2 › Play Game › Install. About 70 GB; the download goes on with the app in the background.</string>
     <string name="settings_install_note">Everything is installed on the phone, no PC needed. Nothing from Valve is in this app: Steam and the games are downloaded from Valve, with your own account. Use Wi-Fi and keep the phone on its charger.</string>
+    <string name="settings_gamepads">Gamepads (experimental)</string>
+    <string name="settings_gamepads_about">Bluetooth or USB gamepads connected to the phone reach Steam and the games as Xbox 360 controllers. Their buttons no longer act as keyboard keys.</string>
     <string name="settings_keys">On-screen keys</string>
     <string name="settings_keys_about">Keys at the left and right of the picture, which gets narrower to make room for them. The game\'s menu can show and hide them too.</string>
     <string name="settings_keys_default">Back to the keys for Dota 2</string>
