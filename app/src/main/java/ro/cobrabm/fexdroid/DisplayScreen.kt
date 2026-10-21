@@ -1,7 +1,10 @@
 package ro.cobrabm.fexdroid
 
+import android.net.Uri
 import android.util.Log
 import android.view.SurfaceHolder
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -27,6 +30,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import kotlinx.coroutines.delay
+import java.io.File
 import kotlin.concurrent.thread
 
 /**
@@ -50,6 +54,93 @@ fun DisplayScreen(autoAction: String?) {
     var holder by remember { mutableStateOf<SurfaceHolder?>(null) }
     var view by remember { mutableStateOf<InputSurfaceView?>(null) }
     var frames by remember { mutableStateOf(0L) }
+
+    // ========== Выбор файла для тестового запуска x86-64 приложений ==========
+    var selectedFileUri by remember { mutableStateOf<Uri?>(null) }
+    var selectedFileName by remember { mutableStateOf<String?>(null) }
+    var customExeArgs by remember { mutableStateOf("") }
+
+    val filePickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.GetContent()
+    ) { uri: Uri? ->
+        uri?.let {
+            selectedFileUri = it
+            // Получаем имя файла
+            val name = ctx.contentResolver.query(it, null, null, null, null)?.use { cursor ->
+                val nameIndex = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                if (cursor.moveToFirst() && nameIndex >= 0) cursor.getString(nameIndex) else null
+            } ?: "unknown"
+            selectedFileName = name
+            append("Выбран файл: $name")
+        }
+    }
+
+    /**
+     * Копирует файл из URI в файловую систему контейнера LinuxEnv,
+     * чтобы FEX мог его запустить.
+     */
+    fun copyFileToContainer(uri: Uri): File? {
+        return try {
+            val destDir = File("${env.x86Root}/home/user/apps")
+            if (!destDir.exists()) destDir.mkdirs()
+            
+            val fileName = selectedFileName ?: "app.bin"
+            val destFile = File(destDir, fileName)
+            
+            ctx.contentResolver.openInputStream(uri)?.use { input ->
+                destFile.outputStream().use { output ->
+                    input.copyTo(output)
+                }
+            }
+            
+            // Делаем файл исполняемым
+            destFile.setExecutable(true, false)
+            destFile.setReadable(true, false)
+            destFile.setWritable(true, false)
+            
+            append("Файл скопирован: ${destFile.absolutePath}")
+            destFile
+        } catch (e: Exception) {
+            append("Ошибка копирования файла: ${e.message}")
+            null
+        }
+    }
+
+    /**
+     * Запускает выбранное x86-64 приложение через FEX с графическим выводом.
+     */
+    fun launchCustomX86App() {
+        val uri = selectedFileUri
+        if (uri == null) {
+            append("Ошибка: не выбран файл для запуска.")
+            return
+        }
+        
+        thread(name = "custom-x86-app") {
+            startX().join()
+            if (!session.startAudio()) {
+                append("Не удалось запустить аудио.")
+            }
+            
+            val exeFile = copyFileToContainer(uri)
+            if (exeFile == null) {
+                append("Не удалось скопировать файл в контейнер.")
+                return@thread
+            }
+            
+            val exePath = exeFile.absolutePath
+            val args = customExeArgs.split(" ").filter { it.isNotBlank() }
+            
+            val cmd = mutableListOf(
+                "${env.root}/usr/bin/FEX",
+                exePath
+            ).apply { addAll(args) }
+            
+            append("Запуск: ${cmd.joinToString(" ")}")
+            session.launch("custom-x86-${selectedFileName}", cmd)
+        }
+    }
+    // ========================================================================
 
     fun startX() = thread(name = "start-x") {
         if (!env.ensureInstalled(::append)) return@thread
@@ -104,6 +195,7 @@ fun DisplayScreen(autoAction: String?) {
                 startX().join()
                 session.launch("vkcube-x86", listOf("${env.root}/usr/bin/FEX", "${env.x86Root}/usr/bin/vkcube"))
             }
+            "custom-x86" -> launchCustomX86App()
         }
     }
 
@@ -148,8 +240,45 @@ fun DisplayScreen(autoAction: String?) {
                 sh("tone-x86", "${env.root}/opt/fexdroid-tests/tone 3 | ${env.root}/usr/bin/FEX ${env.x86Root}/usr/bin/pacat $toneRaw")
             }) { Text("Sound test x86 (FEX)") }
             Button(onClick = { thread { startX().join(); session.launch("xev", listOf("${env.root}/usr/bin/xev")) } }) { Text("xev") }
+
+            // ========== Кнопки для тестового запуска кастомных x86-64 приложений ==========
+            Button(onClick = {
+                // MIME тип для исполняемых файлов и архивов. 
+                // Можно также использовать "*/*" для любого файла
+                filePickerLauncher.launch("*/*")
+            }) {
+                Text("Выбрать файл x86-64")
+            }
+            
+            Button(
+                onClick = { launchCustomX86App() },
+                enabled = selectedFileUri != null
+            ) {
+                Text(if (selectedFileName != null) "Запустить: $selectedFileName" else "Запустить файл x86 (FEX)")
+            }
+            // ============================================================================
+
             OutlinedButton(onClick = { DisplayBridge.stop(); thread(name = "x-stop") { session.stopAll() } }) { Text("Stop everything") }
         }
+
+        // ========== Панель отображения информации о выбранном файле и аргументах ==========
+        if (selectedFileName != null) {
+            Text(
+                "Выбранный файл: $selectedFileName",
+                style = MaterialTheme.typography.bodySmall,
+                modifier = Modifier.padding(top = 4.dp)
+            )
+        }
+
+        androidx.compose.material3.OutlinedTextField(
+            value = customExeArgs,
+            onValueChange = { customExeArgs = it },
+            label = { Text("Аргументы запуска (опционально)") },
+            modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+            singleLine = true
+        )
+        // =================================================================================
+
         Text(log, fontFamily = FontFamily.Monospace, fontSize = 10.sp)
     }
 }
