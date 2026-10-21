@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -70,7 +71,7 @@ fun DisplayScreen(autoAction: String?) {
                 if (cursor.moveToFirst() && nameIndex >= 0) cursor.getString(nameIndex) else null
             } ?: "unknown"
             selectedFileName = name
-            append("Выбран файл: $name")
+            append("✅ Выбран файл: $name")
         }
     }
 
@@ -96,10 +97,10 @@ fun DisplayScreen(autoAction: String?) {
             destFile.setReadable(true, false)
             destFile.setWritable(true, false)
 
-            append("Файл скопирован: ${destFile.absolutePath}")
+            append("📁 Файл скопирован в: ${destFile.absolutePath}")
             destFile
         } catch (e: Exception) {
-            append("Ошибка копирования файла: ${e.message}")
+            append("❌ Ошибка копирования файла: ${e.message}")
             null
         }
     }
@@ -110,19 +111,19 @@ fun DisplayScreen(autoAction: String?) {
     fun launchCustomX86App() {
         val uri = selectedFileUri
         if (uri == null) {
-            append("Ошибка: не выбран файл для запуска.")
+            append("⚠️ Ошибка: не выбран файл для запуска.")
             return
         }
 
         thread(name = "custom-x86-app") {
             startX().join()
             if (!session.startAudio()) {
-                append("Не удалось запустить аудио.")
+                append("⚠️ Не удалось запустить аудио.")
             }
 
             val exeFile = copyFileToContainer(uri)
             if (exeFile == null) {
-                append("Не удалось скопировать файл в контейнер.")
+                append("❌ Не удалось скопировать файл в контейнер.")
                 return@thread
             }
 
@@ -134,7 +135,7 @@ fun DisplayScreen(autoAction: String?) {
                 exePath
             ).apply { addAll(args) }
 
-            append("Запуск: ${cmd.joinToString(" ")}")
+            append("🚀 Запуск: ${cmd.joinToString(" ")}")
             session.launch("custom-x86-${selectedFileName}", cmd)
         }
     }
@@ -149,14 +150,12 @@ fun DisplayScreen(autoAction: String?) {
         view?.post { view?.inputEnabled = true; view?.requestFocus() }
     }
 
-    /** Phase 5: Steam client under FEX (tools/steam/fexdroid-steam.sh). */
     fun startSteam() {
         startX().join()
         session.startAudio()
         session.launch("steam", Game.STEAM.argv(env))
     }
 
-    /** Dota 2 without the Steam client (bring-up); tools/steam/fexdroid-dota.sh. */
     fun startDota() {
         startX().join()
         session.startAudio()
@@ -182,17 +181,11 @@ fun DisplayScreen(autoAction: String?) {
             "x" -> startX()
             "vkcube" -> thread { startX().join(); session.launch("vkcube", listOf("${env.root}/usr/bin/vkcube")) }
             "audio-test" -> sh("tone", "${env.root}/opt/fexdroid-tests/tone 3 | pacat $toneRaw")
-            "fex-audio-test" -> sh("tone-x86",
-                "${env.root}/opt/fexdroid-tests/tone 3 | ${env.root}/usr/bin/FEX ${env.x86Root}/usr/bin/pacat $toneRaw")
+            "fex-audio-test" -> sh("tone-x86", "${env.root}/opt/fexdroid-tests/tone 3 | ${env.root}/usr/bin/FEX ${env.x86Root}/usr/bin/pacat $toneRaw")
             "steam" -> thread { startSteam() }
             "dota" -> thread { startDota() }
-            "xev" -> thread { startX().join(); session.launch("xev", listOf("${env.root}/bin/sh", "-c",
-                // Line-buffered stdout (what `stdbuf -oL` does) so events reach the log at once.
-                "LD_PRELOAD=${env.root}/usr/libexec/coreutils/libstdbuf.so _STDBUF_O=L exec \"$@\"", "sh", "${env.root}/usr/bin/xev", "-geometry", "${session.width}x${session.height}+0+0", "-event", "keyboard", "-event", "button", "-event", "mouse")) }
-            "fex-vkcube" -> thread {
-                startX().join()
-                session.launch("vkcube-x86", listOf("${env.root}/usr/bin/FEX", "${env.x86Root}/usr/bin/vkcube"))
-            }
+            "xev" -> thread { startX().join(); session.launch("xev", listOf("${env.root}/bin/sh", "-c", "LD_PRELOAD=${env.root}/usr/libexec/coreutils/libstdbuf.so _STDBUF_O=L exec \"\$@\"", "sh", "${env.root}/usr/bin/xev", "-geometry", "${session.width}x${session.height}+0+0", "-event", "keyboard", "-event", "button", "-event", "mouse")) }
+            "fex-vkcube" -> thread { startX().join(); session.launch("vkcube-x86", listOf("${env.root}/usr/bin/FEX", "${env.x86Root}/usr/bin/vkcube")) }
             "custom-x86" -> launchCustomX86App()
         }
     }
@@ -212,47 +205,30 @@ fun DisplayScreen(autoAction: String?) {
             },
         )
         Text("frames shown: $frames · sound: ${audioFrames / 48000} s played", style = MaterialTheme.typography.bodySmall)
+        
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(onClick = { startX() }) { Text("Start X") }
             Button(onClick = { thread { startSteam() } }) { Text("Steam") }
             Button(onClick = { thread { startDota() } }) { Text("Dota 2 (direct)") }
-            Button(onClick = { thread { startX().join(); session.launch("vkcube", listOf("${env.root}/usr/bin/vkcube")) } }) {
-                Text("vkcube arm64")
-            }
-            Button(onClick = {
-                thread {
-                    startX().join()
-                    session.launch("vkcube-x86", listOf("${env.root}/usr/bin/FEX", "${env.x86Root}/usr/bin/vkcube"))
-                }
-            }) { Text("vkcube x86 (FEX)") }
-            OutlinedButton(onClick = { view?.requestPointerCapture() }) { Text("Capture the mouse (Ctrl+Alt releases)") }
-            OutlinedButton(onClick = {
-                view?.let { v ->
-                    v.requestFocus()
-                    ctx.getSystemService(android.view.inputmethod.InputMethodManager::class.java)
-                        .showSoftInput(v, 0)
-                }
-            }) { Text("Keyboard") }
+            Button(onClick = { thread { startX().join(); session.launch("vkcube", listOf("${env.root}/usr/bin/vkcube")) } }) { Text("vkcube arm64") }
+            Button(onClick = { thread { startX().join(); session.launch("vkcube-x86", listOf("${env.root}/usr/bin/FEX", "${env.x86Root}/usr/bin/vkcube")) } }) { Text("vkcube x86 (FEX)") }
+            OutlinedButton(onClick = { view?.requestPointerCapture() }) { Text("Capture mouse") }
+            OutlinedButton(onClick = { view?.let { v -> v.requestFocus(); ctx.getSystemService(android.view.inputmethod.InputMethodManager::class.java)?.showSoftInput(v, 0) } }) { Text("Keyboard") }
             Button(onClick = { sh("tone", "${env.root}/opt/fexdroid-tests/tone 3 | pacat $toneRaw") }) { Text("Sound test") }
-            Button(onClick = {
-                sh("tone-x86", "${env.root}/opt/fexdroid-tests/tone 3 | ${env.root}/usr/bin/FEX ${env.x86Root}/usr/bin/pacat $toneRaw")
-            }) { Text("Sound test x86 (FEX)") }
+            Button(onClick = { sh("tone-x86", "${env.root}/opt/fexdroid-tests/tone 3 | ${env.root}/usr/bin/FEX ${env.x86Root}/usr/bin/pacat $toneRaw") }) { Text("Sound test x86") }
             Button(onClick = { thread { startX().join(); session.launch("xev", listOf("${env.root}/usr/bin/xev")) } }) { Text("xev") }
 
-            // ===== Кнопки для запуска кастомных x86-64 приложений =====
+            // ===== НОВЫЕ КНОПКИ ДЛЯ ЗАПУСКА КАСТОМНЫХ x86-64 ПРИЛОЖЕНИЙ =====
             Button(onClick = { filePickerLauncher.launch("*/*") }) {
-                Text("Выбрать файл x86-64")
+                Text("📂 Выбрать файл x86-64")
             }
             Button(
                 onClick = { launchCustomX86App() },
                 enabled = selectedFileUri != null
             ) {
-                Text(
-                    if (selectedFileName != null) "Запустить: $selectedFileName"
-                    else "Запустить файл x86 (FEX)"
-                )
+                Text(if (selectedFileName != null) "🚀 Запустить: $selectedFileName" else "🚀 Запустить файл (FEX)")
             }
-            // ==========================================================
+            // =================================================================
 
             OutlinedButton(onClick = { DisplayBridge.stop(); thread(name = "x-stop") { session.stopAll() } }) { Text("Stop everything") }
         }
@@ -262,19 +238,19 @@ fun DisplayScreen(autoAction: String?) {
             Text(
                 "Выбранный файл: $selectedFileName",
                 style = MaterialTheme.typography.bodySmall,
-                modifier = Modifier.padding(top = 4.dp)
+                color = MaterialTheme.colorScheme.primary,
+                modifier = Modifier.padding(top = 8.dp)
             )
         }
 
-        androidx.compose.material3.OutlinedTextField(
+        OutlinedTextField(
             value = customExeArgs,
             onValueChange = { customExeArgs = it },
-            label = { Text("Аргументы запуска (опционально)") },
+            label = { Text("Аргументы запуска (опционально, через пробел)") },
             modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
             singleLine = true
         )
-        // ===================================================
 
-        Text(log, fontFamily = FontFamily.Monospace, fontSize = 10.sp)
+        Text(log, fontFamily = FontFamily.Monospace, fontSize = 10.sp, modifier = Modifier.padding(top = 8.dp))
     }
 }
