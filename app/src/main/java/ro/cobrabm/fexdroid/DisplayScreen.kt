@@ -13,6 +13,9 @@ import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.Button
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.ExposedDropdownMenuBox
+import androidx.compose.material3.ExposedDropdownMenuDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -36,7 +39,6 @@ import kotlin.concurrent.thread
 
 /**
  * Developer X11 test screen (Avansat › Ecran X11): Xvfb + bridge + test clients.
- * Also the target of the `--es action x|vkcube|fex-vkcube|audio-test|fex-audio-test|xev|steam|dota|custom-x86` adb intents.
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -56,26 +58,68 @@ fun DisplayScreen(autoAction: String?) {
     var view by remember { mutableStateOf<InputSurfaceView?>(null) }
     var frames by remember { mutableStateOf(0L) }
 
-    // ===== 1. Переменные состояния для выбора файла =====
-    var selectedFileUri by remember { mutableStateOf<Uri?>(null) }
-    var selectedFileName by remember { mutableStateOf<String?>(null) }
+    // ===== 1. Переменные для выбора файла внутри Linux-контейнера =====
+    var customExePath by remember { mutableStateOf("${env.x86Root}/usr/bin/vkcube") }
     var customExeArgs by remember { mutableStateOf("") }
+    
+    // Список файлов для выпадающего меню
+    var availableBinaries by remember { mutableStateOf<List<String>>(emptyList()) }
+    var expandedDropdown by remember { mutableStateOf(false) }
+    var isScanning by remember { mutableStateOf(false) }
 
-    val filePickerLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.GetContent()
-    ) { uri: Uri? ->
-        uri?.let {
-            selectedFileUri = it
-            val name = ctx.contentResolver.query(it, null, null, null, null)?.use { cursor ->
-                val nameIndex = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
-                if (cursor.moveToFirst() && nameIndex >= 0) cursor.getString(nameIndex) else null
-            } ?: "unknown"
-            selectedFileName = name
-            append("✅ Выбран файл: $name")
+    // Функция сканирования директории Linux (выполняется в фоне, чтобы не морозить UI)
+    fun scanLinuxDirectory(dirPath: String) {
+        isScanning = true
+        thread(name = "scan-binaries") {
+            try {
+                val dir = File(dirPath)
+                val files = if (dir.exists() && dir.isDirectory) {
+                    dir.listFiles()?.filter { 
+                        it.isFile && it.canExecute() // Берем только исполняемые файлы
+                    }?.map { it.name }?.sorted() ?: emptyList()
+                } else {
+                    emptyList()
+                }
+                // Ограничиваем список, чтобы не перегружать UI (первые 200 файлов)
+                availableBinaries = files.take(200)
+                append("📂 Найдено исполняемых файлов в $dirPath: ${files.size}")
+            } catch (e: Exception) {
+                append("❌ Ошибка чтения директории: ${e.message}")
+                availableBinaries = emptyList()
+            } finally {
+                isScanning = false
+            }
         }
     }
 
-    // ===== 2. startX объявлен ЗДЕСЬ, чтобы избежать ошибок разрешения имен =====
+    // ===== 2. Функция запуска приложения по Linux-пути =====
+    fun launchCustomX86AppByPath(linuxPath: String) {
+        if (linuxPath.isBlank()) {
+            append("⚠️ Ошибка: путь к исполняемому файлу пуст.")
+            return
+        }
+
+        thread(name = "custom-x86-app") {
+            startX().join()
+            if (!session.startAudio()) {
+                append("⚠️ Не удалось запустить аудио.")
+            }
+
+            val file = File(linuxPath)
+            if (!file.exists()) {
+                append("❌ Файл не найден по пути: $linuxPath")
+                return@thread
+            }
+
+            val args = customExeArgs.split(" ").filter { it.isNotBlank() }
+            val cmd = mutableListOf("${env.root}/usr/bin/FEX", linuxPath).apply { addAll(args) }
+
+            append("🚀 Запуск: ${cmd.joinToString(" ")}")
+            session.launch("custom-x86-${file.name}", cmd)
+        }
+    }
+
+    // ===== 3. Базовые функции X11 =====
     fun startX() = thread(name = "start-x") {
         if (!env.ensureInstalled(::append)) return@thread
         if (!session.startX()) { append("Xvfb did not report a framebuffer (see the log)."); return@thread }
@@ -100,51 +144,6 @@ fun DisplayScreen(autoAction: String?) {
     fun sh(title: String, cmd: String) = thread {
         startX().join()
         if (session.startAudio()) session.launch(title, listOf("${env.root}/bin/sh", "-c", cmd))
-    }
-
-    // ===== 3. Логика запуска кастомного x86-64 приложения =====
-    fun launchCustomX86App() {
-        val uri = selectedFileUri
-        if (uri == null) {
-            append("⚠️ Ошибка: не выбран файл для запуска.")
-            return
-        }
-
-        thread(name = "custom-x86-app") {
-            // startX уже объявлен выше, компилятор его видит
-            startX().join()
-            if (!session.startAudio()) {
-                append("⚠️ Не удалось запустить аудио.")
-            }
-
-            val destDir = File("${env.x86Root}/home/user/apps")
-            if (!destDir.exists()) destDir.mkdirs()
-
-            val fileName = selectedFileName ?: "app.bin"
-            val destFile = File(destDir, fileName)
-
-            try {
-                ctx.contentResolver.openInputStream(uri)?.use { input ->
-                    destFile.outputStream().use { output ->
-                        input.copyTo(output)
-                    }
-                }
-                destFile.setExecutable(true, false)
-                destFile.setReadable(true, false)
-                destFile.setWritable(true, false)
-                append("📁 Файл скопирован в: ${destFile.absolutePath}")
-            } catch (e: Exception) {
-                append("❌ Ошибка копирования файла: ${e.message}")
-                return@thread
-            }
-
-            val exePath = destFile.absolutePath
-            val args = customExeArgs.split(" ").filter { it.isNotBlank() }
-            val cmd = mutableListOf("${env.root}/usr/bin/FEX", exePath).apply { addAll(args) }
-
-            append("🚀 Запуск: ${cmd.joinToString(" ")}")
-            session.launch("custom-x86-${selectedFileName}", cmd)
-        }
     }
 
     // ===== 4. Эффекты жизненного цикла =====
@@ -182,7 +181,7 @@ fun DisplayScreen(autoAction: String?) {
                 session.launch("xev", listOf("${env.root}/bin/sh", "-c", "LD_PRELOAD=${env.root}/usr/libexec/coreutils/libstdbuf.so _STDBUF_O=L exec \"\$@\"", "sh", "${env.root}/usr/bin/xev", "-geometry", "${session.width}x${session.height}+0+0", "-event", "keyboard", "-event", "button", "-event", "mouse")) 
             }
             "fex-vkcube" -> thread { startX().join(); session.launch("vkcube-x86", listOf("${env.root}/usr/bin/FEX", "${env.x86Root}/usr/bin/vkcube")) }
-            "custom-x86" -> launchCustomX86App() // <-- Новый обработчик
+            "custom-x86" -> launchCustomX86AppByPath(customExePath)
         }
     }
 
@@ -204,40 +203,59 @@ fun DisplayScreen(autoAction: String?) {
         
         Text("frames shown: $frames · sound: ${audioFrames / 48000} s played", style = MaterialTheme.typography.bodySmall)
         
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Button(onClick = { startX() }) { Text("Start X") }
-            Button(onClick = { thread { startSteam() } }) { Text("Steam") }
-            Button(onClick = { thread { startDota() } }) { Text("Dota 2 (direct)") }
-            Button(onClick = { thread { startX().join(); session.launch("vkcube", listOf("${env.root}/usr/bin/vkcube")) } }) { Text("vkcube arm64") }
-            Button(onClick = { thread { startX().join(); session.launch("vkcube-x86", listOf("${env.root}/usr/bin/FEX", "${env.x86Root}/usr/bin/vkcube")) } }) { Text("vkcube x86 (FEX)") }
-            OutlinedButton(onClick = { view?.requestPointerCapture() }) { Text("Capture mouse") }
-            OutlinedButton(onClick = { view?.let { v -> v.requestFocus(); ctx.getSystemService(android.view.inputmethod.InputMethodManager::class.java)?.showSoftInput(v, 0) } }) { Text("Keyboard") }
-            Button(onClick = { sh("tone", "${env.root}/opt/fexdroid-tests/tone 3 | pacat $toneRaw") }) { Text("Sound test") }
-            Button(onClick = { sh("tone-x86", "${env.root}/opt/fexdroid-tests/tone 3 | ${env.root}/usr/bin/FEX ${env.x86Root}/usr/bin/pacat $toneRaw") }) { Text("Sound test x86") }
-            Button(onClick = { thread { startX().join(); session.launch("xev", listOf("${env.root}/usr/bin/xev")) } }) { Text("xev") }
-
-            // ===== НОВЫЕ КНОПКИ =====
-            Button(onClick = { filePickerLauncher.launch("*/*") }) {
-                Text("📂 Выбрать файл x86-64")
-            }
-            Button(
-                onClick = { launchCustomX86App() },
-                enabled = selectedFileUri != null
+        // ===== ПАНЕЛЬ ЗАПУСКА КАСТОМНЫХ x86-64 ПРИЛОЖЕНИЙ =====
+        Text("🛠️ Запуск x86-64 приложения (FEX)", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 8.dp))
+        
+        // Выпадающий список с кнопкой сканирования
+        ExposedDropdownMenuBox(
+            expanded = expandedDropdown,
+            onExpandedChange = { expandedDropdown = !expandedDropdown }
+        ) {
+            OutlinedTextField(
+                value = customExePath,
+                onValueChange = { customExePath = it },
+                label = { Text("Путь к исполняемому файлу в Linux") },
+                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expandedDropdown) },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .menuAnchor()
+                    .padding(top = 4.dp)
+            )
+            ExposedDropdownMenu(
+                expanded = expandedDropdown,
+                onDismissRequest = { expandedDropdown = false }
             ) {
-                Text(if (selectedFileName != null) "🚀 Запустить: $selectedFileName" else "🚀 Запустить файл (FEX)")
+                if (availableBinaries.isEmpty() && !isScanning) {
+                    DropdownMenuItem(
+                        text = { Text("Список пуст. Нажмите 'Сканировать'", style = MaterialTheme.typography.bodySmall) },
+                        onClick = {}
+                    )
+                } else if (isScanning) {
+                    DropdownMenuItem(
+                        text = { Text("Сканирование...", style = MaterialTheme.typography.bodySmall) },
+                        onClick = {}
+                    )
+                } else {
+                    availableBinaries.forEach { fileName ->
+                        DropdownMenuItem(
+                            text = { Text(fileName) },
+                            onClick = {
+                                customExePath = "${env.x86Root}/usr/bin/$fileName"
+                                expandedDropdown = false
+                            }
+                        )
+                    }
+                }
             }
-            // =========================
-
-            OutlinedButton(onClick = { DisplayBridge.stop(); thread(name = "x-stop") { session.stopAll() } }) { Text("Stop everything") }
         }
 
-        if (selectedFileName != null) {
-            Text(
-                "Выбранный файл: $selectedFileName",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.padding(top = 8.dp)
-            )
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 4.dp)) {
+            Button(onClick = { scanLinuxDirectory("${env.x86Root}/usr/bin") }, enabled = !isScanning) {
+                Text(if (isScanning) "Сканирование..." else "📂 Сканировать /usr/bin")
+            }
+            Button(onClick = { customExePath = "${env.x86Root}/usr/bin/vkcube" }) {
+                Text("vkcube (by default)")
+            }
         }
 
         OutlinedTextField(
@@ -247,6 +265,27 @@ fun DisplayScreen(autoAction: String?) {
             modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
             singleLine = true
         )
+
+        Button(
+            onClick = { launchCustomX86AppByPath(customExePath) },
+            modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
+        ) {
+            Text("🚀 Запустить через FEX")
+        }
+        // =====================================================
+
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 16.dp)) {
+            Button(onClick = { startX() }) { Text("Start X") }
+            Button(onClick = { thread { startSteam() } }) { Text("Steam") }
+            Button(onClick = { thread { startDota() } }) { Text("Dota 2") }
+            Button(onClick = { thread { startX().join(); session.launch("vkcube", listOf("${env.root}/usr/bin/vkcube")) } }) { Text("vkcube arm64") }
+            Button(onClick = { thread { startX().join(); session.launch("vkcube-x86", listOf("${env.root}/usr/bin/FEX", "${env.x86Root}/usr/bin/vkcube")) } }) { Text("vkcube x86") }
+            OutlinedButton(onClick = { view?.requestPointerCapture() }) { Text("Capture mouse") }
+            OutlinedButton(onClick = { view?.let { v -> v.requestFocus(); ctx.getSystemService(android.view.inputmethod.InputMethodManager::class.java)?.showSoftInput(v, 0) } }) { Text("Keyboard") }
+            Button(onClick = { sh("tone", "${env.root}/opt/fexdroid-tests/tone 3 | pacat $toneRaw") }) { Text("Sound test") }
+            Button(onClick = { thread { startX().join(); session.launch("xev", listOf("${env.root}/usr/bin/xev")) } }) { Text("xev") }
+            OutlinedButton(onClick = { DisplayBridge.stop(); thread(name = "x-stop") { session.stopAll() } }) { Text("Stop everything") }
+        }
 
         Text(log, fontFamily = FontFamily.Monospace, fontSize = 10.sp, modifier = Modifier.padding(top = 8.dp))
     }
