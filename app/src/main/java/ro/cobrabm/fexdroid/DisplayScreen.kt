@@ -35,7 +35,7 @@ import kotlin.concurrent.thread
 
 /**
  * Developer X11 test screen (Avansat › Ecran X11): Xvfb + bridge + test clients.
- * Also the target of the `--es action x|vkcube|fex-vkcube|audio-test|fex-audio-test|xev|steam|dota` adb intents.
+ * Also the target of the `--es action x|vkcube|fex-vkcube|audio-test|fex-audio-test|xev|steam|dota|custom-x86` adb intents.
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
@@ -55,7 +55,7 @@ fun DisplayScreen(autoAction: String?) {
     var view by remember { mutableStateOf<InputSurfaceView?>(null) }
     var frames by remember { mutableStateOf(0L) }
 
-    // ========== Выбор файла для тестового запуска x86-64 приложений ==========
+    // ===== Выбор файла для запуска x86-64 приложения через FEX =====
     var selectedFileUri by remember { mutableStateOf<Uri?>(null) }
     var selectedFileName by remember { mutableStateOf<String?>(null) }
     var customExeArgs by remember { mutableStateOf("") }
@@ -65,7 +65,6 @@ fun DisplayScreen(autoAction: String?) {
     ) { uri: Uri? ->
         uri?.let {
             selectedFileUri = it
-            // Получаем имя файла
             val name = ctx.contentResolver.query(it, null, null, null, null)?.use { cursor ->
                 val nameIndex = cursor.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
                 if (cursor.moveToFirst() && nameIndex >= 0) cursor.getString(nameIndex) else null
@@ -76,28 +75,27 @@ fun DisplayScreen(autoAction: String?) {
     }
 
     /**
-     * Копирует файл из URI в файловую систему контейнера LinuxEnv,
+     * Копирует выбранный файл из Android URI в файловую систему контейнера Linux,
      * чтобы FEX мог его запустить.
      */
     fun copyFileToContainer(uri: Uri): File? {
         return try {
             val destDir = File("${env.x86Root}/home/user/apps")
             if (!destDir.exists()) destDir.mkdirs()
-            
+
             val fileName = selectedFileName ?: "app.bin"
             val destFile = File(destDir, fileName)
-            
+
             ctx.contentResolver.openInputStream(uri)?.use { input ->
                 destFile.outputStream().use { output ->
                     input.copyTo(output)
                 }
             }
-            
-            // Делаем файл исполняемым
+
             destFile.setExecutable(true, false)
             destFile.setReadable(true, false)
             destFile.setWritable(true, false)
-            
+
             append("Файл скопирован: ${destFile.absolutePath}")
             destFile
         } catch (e: Exception) {
@@ -115,32 +113,32 @@ fun DisplayScreen(autoAction: String?) {
             append("Ошибка: не выбран файл для запуска.")
             return
         }
-        
+
         thread(name = "custom-x86-app") {
             startX().join()
             if (!session.startAudio()) {
                 append("Не удалось запустить аудио.")
             }
-            
+
             val exeFile = copyFileToContainer(uri)
             if (exeFile == null) {
                 append("Не удалось скопировать файл в контейнер.")
                 return@thread
             }
-            
+
             val exePath = exeFile.absolutePath
             val args = customExeArgs.split(" ").filter { it.isNotBlank() }
-            
+
             val cmd = mutableListOf(
                 "${env.root}/usr/bin/FEX",
                 exePath
             ).apply { addAll(args) }
-            
+
             append("Запуск: ${cmd.joinToString(" ")}")
             session.launch("custom-x86-${selectedFileName}", cmd)
         }
     }
-    // ========================================================================
+    // ===================================================================
 
     fun startX() = thread(name = "start-x") {
         if (!env.ensureInstalled(::append)) return@thread
@@ -241,27 +239,25 @@ fun DisplayScreen(autoAction: String?) {
             }) { Text("Sound test x86 (FEX)") }
             Button(onClick = { thread { startX().join(); session.launch("xev", listOf("${env.root}/usr/bin/xev")) } }) { Text("xev") }
 
-            // ========== Кнопки для тестового запуска кастомных x86-64 приложений ==========
-            Button(onClick = {
-                // MIME тип для исполняемых файлов и архивов. 
-                // Можно также использовать "*/*" для любого файла
-                filePickerLauncher.launch("*/*")
-            }) {
+            // ===== Кнопки для запуска кастомных x86-64 приложений =====
+            Button(onClick = { filePickerLauncher.launch("*/*") }) {
                 Text("Выбрать файл x86-64")
             }
-            
             Button(
                 onClick = { launchCustomX86App() },
                 enabled = selectedFileUri != null
             ) {
-                Text(if (selectedFileName != null) "Запустить: $selectedFileName" else "Запустить файл x86 (FEX)")
+                Text(
+                    if (selectedFileName != null) "Запустить: $selectedFileName"
+                    else "Запустить файл x86 (FEX)"
+                )
             }
-            // ============================================================================
+            // ==========================================================
 
             OutlinedButton(onClick = { DisplayBridge.stop(); thread(name = "x-stop") { session.stopAll() } }) { Text("Stop everything") }
         }
 
-        // ========== Панель отображения информации о выбранном файле и аргументах ==========
+        // ===== Информация о выбранном файле и аргументах =====
         if (selectedFileName != null) {
             Text(
                 "Выбранный файл: $selectedFileName",
@@ -277,7 +273,7 @@ fun DisplayScreen(autoAction: String?) {
             modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
             singleLine = true
         )
-        // =================================================================================
+        // ===================================================
 
         Text(log, fontFamily = FontFamily.Monospace, fontSize = 10.sp)
     }
