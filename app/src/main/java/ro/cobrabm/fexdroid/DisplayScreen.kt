@@ -12,6 +12,8 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExposedDropdownMenuBox
@@ -62,12 +64,10 @@ fun DisplayScreen(autoAction: String?) {
     var customExePath by remember { mutableStateOf("${env.x86Root}/usr/bin/vkcube") }
     var customExeArgs by remember { mutableStateOf("") }
     
-    // Список файлов для выпадающего меню
     var availableBinaries by remember { mutableStateOf<List<String>>(emptyList()) }
     var expandedDropdown by remember { mutableStateOf(false) }
     var isScanning by remember { mutableStateOf(false) }
 
-    // Функция сканирования директории Linux (выполняется в фоне, чтобы не морозить UI)
     fun scanLinuxDirectory(dirPath: String) {
         isScanning = true
         thread(name = "scan-binaries") {
@@ -75,12 +75,11 @@ fun DisplayScreen(autoAction: String?) {
                 val dir = File(dirPath)
                 val files = if (dir.exists() && dir.isDirectory) {
                     dir.listFiles()?.filter { 
-                        it.isFile && it.canExecute() // Берем только исполняемые файлы
+                        it.isFile && it.canExecute()
                     }?.map { it.name }?.sorted() ?: emptyList()
                 } else {
                     emptyList()
                 }
-                // Ограничиваем список, чтобы не перегружать UI (первые 200 файлов)
                 availableBinaries = files.take(200)
                 append("📂 Найдено исполняемых файлов в $dirPath: ${files.size}")
             } catch (e: Exception) {
@@ -92,7 +91,6 @@ fun DisplayScreen(autoAction: String?) {
         }
     }
 
-    // ===== 2. Функция запуска приложения по Linux-пути =====
     fun launchCustomX86AppByPath(linuxPath: String) {
         if (linuxPath.isBlank()) {
             append("⚠️ Ошибка: путь к исполняемому файлу пуст.")
@@ -206,7 +204,6 @@ fun DisplayScreen(autoAction: String?) {
         // ===== ПАНЕЛЬ ЗАПУСКА КАСТОМНЫХ x86-64 ПРИЛОЖЕНИЙ =====
         Text("🛠️ Запуск x86-64 приложения (FEX)", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 8.dp))
         
-        // Выпадающий список с кнопкой сканирования
         ExposedDropdownMenuBox(
             expanded = expandedDropdown,
             onExpandedChange = { expandedDropdown = !expandedDropdown }
@@ -221,7 +218,7 @@ fun DisplayScreen(autoAction: String?) {
                     .menuAnchor()
                     .padding(top = 4.dp)
             )
-            ExposedDropdownMenu(
+            androidx.compose.material3.ExposedDropdownMenu(
                 expanded = expandedDropdown,
                 onDismissRequest = { expandedDropdown = false }
             ) {
@@ -287,6 +284,14 @@ fun DisplayScreen(autoAction: String?) {
             OutlinedButton(onClick = { DisplayBridge.stop(); thread(name = "x-stop") { session.stopAll() } }) { Text("Stop everything") }
         }
 
-        Text(log, fontFamily = FontFamily.Monospace, fontSize = 10.sp, modifier = Modifier.padding(top = 8.dp))
+        // ===== СКРОЛЛЯЩИЙСЯ ЛОГ =====
+        Text(
+            text = log, 
+            fontFamily = FontFamily.Monospace, 
+            fontSize = 10.sp, 
+            modifier = Modifier
+                .padding(top = 8.dp)
+                .verticalScroll(rememberScrollState()) // <-- ДОБАВЛЕН СКРОЛЛ
+        )
     }
 }
