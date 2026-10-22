@@ -2,14 +2,21 @@ package ro.cobrabm.fexdroid
 
 import android.util.Log
 import android.view.SurfaceHolder
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenu
@@ -26,8 +33,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -43,12 +53,13 @@ import kotlin.concurrent.thread
 @Composable
 fun DisplayScreen(autoAction: String?) {
     val ctx = LocalContext.current
+    val clipboardManager = LocalClipboardManager.current
     val env = remember { LinuxEnv(ctx) }
     var log by remember { mutableStateOf("") }
     
     fun append(line: String) {
         Log.i("fexdroid-display", line)
-        log = (log + line + "\n").takeLast(6000)
+        log = (log + line + "\n").takeLast(8000) // Увеличили буфер лога до 8000 символов
     }
     
     val session = remember {
@@ -61,7 +72,7 @@ fun DisplayScreen(autoAction: String?) {
     var frames by remember { mutableStateOf(0L) }
 
     // =========================================================================
-    // 1. ФУНКЦИИ ОБЪЯВЛЯЮТСЯ ЗДЕСЬ (строго сверху вниз, чтобы компилятор их видел)
+    // 1. ФУНКЦИИ (строго сверху вниз)
     // =========================================================================
 
     fun startX() = thread(name = "start-x") {
@@ -90,31 +101,33 @@ fun DisplayScreen(autoAction: String?) {
         if (session.startAudio()) session.launch(title, listOf("${env.root}/bin/sh", "-c", cmd))
     }
 
-    // ===== Переменные для выбора файла =====
-    var customExeDir by remember { mutableStateOf("${env.x86Root}/usr/bin") }  // Путь к ПАПКЕ
-    var selectedFileName by remember { mutableStateOf<String?>(null) }         // Выбранный файл из списка
+    // ===== Переменные для запуска приложений =====
+    var customExeDir by remember { mutableStateOf("${env.x86Root}/usr/bin") }
+    var selectedFileName by remember { mutableStateOf<String?>(null) }
     var customExeArgs by remember { mutableStateOf("") }
+    
     var availableBinaries by remember { mutableStateOf<List<String>>(emptyList()) }
-    var expandedDropdown by remember { mutableStateOf(false) }
+    var expandedFolderMenu by remember { mutableStateOf(false) }
+    var expandedFileMenu by remember { mutableStateOf(false) }
     var isScanning by remember { mutableStateOf(false) }
 
     fun scanLinuxDirectory(dirPath: String) {
         isScanning = true
+        selectedFileName = null // Сбрасываем выбор файла при новом сканировании
         thread(name = "scan-binaries") {
             try {
                 val dir = File(dirPath)
                 if (!dir.exists()) {
-                    append(" Директория не существует: $dirPath")
+                    append("⚠️ Директория не существует: $dirPath")
                     availableBinaries = emptyList()
                     isScanning = false
                     return@thread
                 }
                 
-                val files = dir.listFiles()?.filter { 
-                    it.isFile  // Показываем все файлы (не только исполняемые)
-                }?.map { it.name }?.sorted() ?: emptyList()
+                val files = dir.listFiles()?.filter { it.isFile }
+                    ?.map { it.name }?.sorted() ?: emptyList()
                 
-                availableBinaries = files.take(500)  // Увеличили лимит до 500
+                availableBinaries = files.take(500)
                 append("📂 Найдено файлов в $dirPath: ${files.size}")
                 if (files.isNotEmpty()) {
                     append("   Примеры: ${files.take(5).joinToString(", ")}")
@@ -130,7 +143,7 @@ fun DisplayScreen(autoAction: String?) {
 
     fun launchCustomX86AppByPath(dirPath: String, fileName: String?) {
         if (fileName == null || fileName.isBlank()) {
-            append("️ Ошибка: не выбран файл для запуска.")
+            append("⚠️ Ошибка: не выбран файл для запуска.")
             return
         }
 
@@ -152,10 +165,9 @@ fun DisplayScreen(autoAction: String?) {
             try {
                 val chmodProcess = Runtime.getRuntime().exec(arrayOf("chmod", "+x", fullPath))
                 chmodProcess.waitFor()
-                append("✅ Файл сделан исполняемым: $fullPath")
+                append("✅ Файл сделан исполняемым: chmod +x $fullPath")
             } catch (e: Exception) {
                 append("⚠️ Не удалось сделать файл исполняемым: ${e.message}")
-                // Продолжаем запуск, даже если chmod не сработал
             }
 
             val args = customExeArgs.split(" ").filter { it.isNotBlank() }
@@ -225,108 +237,81 @@ fun DisplayScreen(autoAction: String?) {
             },
         )
         
-        Text("frames shown: $frames · sound: ${audioFrames / 48000} s played", style = MaterialTheme.typography.bodySmall)
+        Text("frames: $frames · sound: ${audioFrames / 48000} s", style = MaterialTheme.typography.bodySmall)
         
-        // ===== ПАНЕЛЬ ЗАПУСКА КАСТОМНЫХ x86-64 ПРИЛОЖЕНИЙ =====
-        Text("🛠️ Запуск x86-64 приложения (FEX)", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 8.dp))
+        // ===== УЛУЧШЕННАЯ ПАНЕЛЬ ЗАПУСКА =====
+        Text("🛠️ Запуск x86-64 приложения (FEX)", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 8.dp, bottom = 4.dp))
         
-        // Поле для выбора ПАПКИ
-        OutlinedTextField(
-            value = customExeDir,
-            onValueChange = { customExeDir = it },
-            label = { Text("Путь к папке с приложениями в Linux") },
-            placeholder = { Text("Например: /data/user/0/.../files/x86_64-steam/usr/bin") },
-            trailingIcon = {
-                TextButton(onClick = { expandedDropdown = true }) {
-                    Text("▼", fontSize = 18.sp)
-                }
-            },
-            modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
-            maxLines = 2
-        )
-        
-        DropdownMenu(
-            expanded = expandedDropdown,
-            onDismissRequest = { expandedDropdown = false },
-            modifier = Modifier.fillMaxWidth()
-        ) {
-            // Быстрые пути к популярным директориям
-            DropdownMenuItem(
-                text = { Text("${env.x86Root}/usr/bin") },
-                onClick = {
-                    customExeDir = "${env.x86Root}/usr/bin"
-                    expandedDropdown = false
-                }
-            )
-            DropdownMenuItem(
-                text = { Text("${env.x86Root}/home/user/apps") },
-                onClick = {
-                    customExeDir = "${env.x86Root}/home/user/apps"
-                    expandedDropdown = false
-                }
-            )
-            DropdownMenuItem(
-                text = { Text("/data/user/0/ro.cobrabm.fexdroid/files/rootfs/usr/bin") },
-                onClick = {
-                    customExeDir = "/data/user/0/ro.cobrabm.fexdroid/files/rootfs/usr/bin"
-                    expandedDropdown = false
-                }
-            )
-        }
-
-        // Поле для выбора ФАЙЛА из отсканированных
-        if (availableBinaries.isNotEmpty()) {
+        // Строка 1: Путь к папке + Кнопка сканирования
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
             OutlinedTextField(
-                value = selectedFileName ?: "",
-                onValueChange = { selectedFileName = it.ifBlank { null } },
-                label = { Text("Выберите файл для запуска") },
-                placeholder = { Text("Начните вводить имя файла...") },
+                value = customExeDir,
+                onValueChange = { customExeDir = it },
+                label = { Text("📁 Папка в Linux") },
+                modifier = Modifier.weight(1f),
+                singleLine = true,
                 trailingIcon = {
-                    TextButton(onClick = { expandedDropdown = true }) {
-                        Text("", fontSize = 18.sp)
-                    }
-                },
-                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-                singleLine = true
-            )
-            
-            // Выпадающий список файлов
-            DropdownMenu(
-                expanded = expandedDropdown,
-                onDismissRequest = { expandedDropdown = false },
-                modifier = Modifier.fillMaxWidth()
-            ) {
-                availableBinaries.forEach { fileName ->
-                    DropdownMenuItem(
-                        text = { Text(fileName) },
-                        onClick = {
-                            selectedFileName = fileName
-                            expandedDropdown = false
-                        }
-                    )
+                    TextButton(onClick = { expandedFolderMenu = true }) { Text("▼", fontSize = 16.sp) }
                 }
-            }
-        }
-
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 8.dp)) {
+            )
+            Spacer(modifier = Modifier.width(8.dp))
             Button(
                 onClick = { scanLinuxDirectory(customExeDir) }, 
-                enabled = !isScanning && customExeDir.isNotBlank()
+                enabled = !isScanning && customExeDir.isNotBlank(),
+                modifier = Modifier.heightIn(min = 56.dp) // Выравнивание по высоте с TextField
             ) {
-                Text(if (isScanning) "🔄 Сканирование..." else "📂 Сканировать папку")
-            }
-            Button(onClick = { 
-                customExeDir = "${env.x86Root}/usr/bin"
-                selectedFileName = "vkcube"
-            }) {
-                Text("vkcube (by default)")
+                Text(if (isScanning) "⏳" else "📂 Scan")
             }
         }
 
+        // Выпадающее меню для папок
+        DropdownMenu(
+            expanded = expandedFolderMenu,
+            onDismissRequest = { expandedFolderMenu = false },
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            DropdownMenuItem(text = { Text("${env.x86Root}/usr/bin") }, onClick = { customExeDir = "${env.x86Root}/usr/bin"; expandedFolderMenu = false })
+            DropdownMenuItem(text = { Text("${env.x86Root}/home/user/apps") }, onClick = { customExeDir = "${env.x86Root}/home/user/apps"; expandedFolderMenu = false })
+        }
+
+        // Строка 2: Выбор файла (активно только после сканирования)
+        OutlinedTextField(
+            value = selectedFileName ?: "",
+            onValueChange = { selectedFileName = it.ifBlank { null } },
+            label = { Text("📄 Файл для запуска") },
+            placeholder = { Text(if (availableBinaries.isEmpty()) "Сначала нажмите 'Scan'" else "Начните вводить имя...") },
+            modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+            singleLine = true,
+            enabled = availableBinaries.isNotEmpty(),
+            trailingIcon = {
+                if (availableBinaries.isNotEmpty()) {
+                    TextButton(onClick = { expandedFileMenu = true }) { Text("▼", fontSize = 16.sp) }
+                }
+            }
+        )
+
+        // Выпадающее меню для файлов
+        DropdownMenu(
+            expanded = expandedFileMenu,
+            onDismissRequest = { expandedFileMenu = false },
+            modifier = Modifier.fillMaxWidth()
+        ) {
+            availableBinaries.forEach { fileName ->
+                DropdownMenuItem(
+                    text = { Text(fileName) },
+                    onClick = {
+                        selectedFileName = fileName
+                        expandedFileMenu = false
+                    }
+                )
+            }
+        }
+
+        // Строка 3: Аргументы и Кнопка запуска
         OutlinedTextField(
             value = customExeArgs,
             onValueChange = { customExeArgs = it },
-            label = { Text("Аргументы запуска (опционально, через пробел)") },
+            label = { Text("Аргументы (опционально)") },
             modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
             singleLine = true
         )
@@ -338,29 +323,53 @@ fun DisplayScreen(autoAction: String?) {
         ) {
             Text("🚀 Запустить через FEX")
         }
-        // =====================================================
+        // =======================================
 
+        // Стандартные кнопки
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 16.dp)) {
             Button(onClick = { startX() }) { Text("Start X") }
             Button(onClick = { thread { startSteam() } }) { Text("Steam") }
             Button(onClick = { thread { startDota() } }) { Text("Dota 2") }
             Button(onClick = { thread { startX().join(); session.launch("vkcube", listOf("${env.root}/usr/bin/vkcube")) } }) { Text("vkcube arm64") }
             Button(onClick = { thread { startX().join(); session.launch("vkcube-x86", listOf("${env.root}/usr/bin/FEX", "${env.x86Root}/usr/bin/vkcube")) } }) { Text("vkcube x86") }
-            OutlinedButton(onClick = { view?.requestPointerCapture() }) { Text("Capture mouse") }
+            OutlinedButton(onClick = { view?.requestPointerCapture() }) { Text("Mouse") }
             OutlinedButton(onClick = { view?.let { v -> v.requestFocus(); ctx.getSystemService(android.view.inputmethod.InputMethodManager::class.java)?.showSoftInput(v, 0) } }) { Text("Keyboard") }
-            Button(onClick = { sh("tone", "${env.root}/opt/fexdroid-tests/tone 3 | pacat $toneRaw") }) { Text("Sound test") }
+            Button(onClick = { sh("tone", "${env.root}/opt/fexdroid-tests/tone 3 | pacat $toneRaw") }) { Text("Sound") }
             Button(onClick = { thread { startX().join(); session.launch("xev", listOf("${env.root}/usr/bin/xev")) } }) { Text("xev") }
-            OutlinedButton(onClick = { DisplayBridge.stop(); thread(name = "x-stop") { session.stopAll() } }) { Text("Stop everything") }
+            OutlinedButton(onClick = { DisplayBridge.stop(); thread(name = "x-stop") { session.stopAll() } }) { Text("Stop") }
         }
 
-        // ===== СКРОЛЛЯЩИЙСЯ ЛОГ =====
-        Text(
-            text = log, 
-            fontFamily = FontFamily.Monospace, 
-            fontSize = 10.sp, 
-            modifier = Modifier
-                .padding(top = 8.dp)
-                .verticalScroll(rememberScrollState())
-        )
+        // ===== ЛОГ С ВОЗМОЖНОСТЬЮ ВЫДЕЛЕНИЯ И КОПИРОВАНИЯ =====
+        Row(
+            modifier = Modifier.fillMaxWidth().padding(top = 12.dp, bottom = 4.dp),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text("📜 Лог вывода", style = MaterialTheme.typography.titleSmall)
+            TextButton(onClick = { 
+                clipboardManager.setText(AnnotatedString(log))
+                append("📋 Лог скопирован в буфер обмена!")
+            }) {
+                Text("📋 Копировать")
+            }
+        }
+        
+        SelectionContainer {
+            Text(
+                text = log.ifEmpty { "Ожидание событий..." }, 
+                fontFamily = FontFamily.Monospace, 
+                fontSize = 10.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(max = 180.dp) // Ограничиваем высоту, чтобы не занимать весь экран
+                    .verticalScroll(rememberScrollState())
+                    .padding(8.dp)
+                    .background(
+                        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f), 
+                        RoundedCornerShape(8.dp)
+                    )
+            )
+        }
     }
 }
