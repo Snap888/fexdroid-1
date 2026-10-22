@@ -4,12 +4,15 @@ import android.util.Log
 import android.view.SurfaceHolder
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.aspectRatio
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
@@ -44,6 +47,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.zIndex
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.io.File
@@ -57,7 +61,7 @@ import kotlin.concurrent.thread
 fun DisplayScreen(autoAction: String?) {
     val ctx = LocalContext.current
     val clipboardManager = LocalClipboardManager.current
-    val scope = rememberCoroutineScope() // <-- ДОБАВЛЕНО для работы с корутинами в onClick
+    val scope = rememberCoroutineScope()
     val env = remember { LinuxEnv(ctx) }
     var log by remember { mutableStateOf("") }
     
@@ -130,7 +134,7 @@ fun DisplayScreen(autoAction: String?) {
             try {
                 val dir = File(dirPath)
                 if (!dir.exists()) {
-                    append("⚠️ Директория не существует: $dirPath")
+                    append("️ Директория не существует: $dirPath")
                     availableBinaries = emptyList()
                     isScanning = false
                     return@thread
@@ -187,7 +191,7 @@ fun DisplayScreen(autoAction: String?) {
                     val files = squashfsRoot.listFiles()?.map { it.name }?.sorted() ?: emptyList()
                     extractedFiles = files
                     append("✅ Распаковка завершена! Файлов: ${files.size}")
-                    append("📂 squashfs-root: ${files.take(10).joinToString(", ")}")
+                    append(" squashfs-root: ${files.take(10).joinToString(", ")}")
                     val appRun = files.find { it == "AppRun" }
                     val desktopFile = files.find { it.endsWith(".desktop") }
                     if (appRun != null) append("🎯 Найден AppRun: squashfs-root/AppRun")
@@ -205,13 +209,13 @@ fun DisplayScreen(autoAction: String?) {
 
     fun launchCustomX86AppByPath(dirPath: String, fileName: String?) {
         if (fileName == null || fileName.isBlank()) {
-            append("⚠️ Ошибка: не выбран файл для запуска.")
+            append("️ Ошибка: не выбран файл для запуска.")
             return
         }
         val fullPath = File(dirPath, fileName).absolutePath
         thread(name = "custom-x86-app") {
             startX().join()
-            if (!session.startAudio()) append("⚠️ Не удалось запустить аудио.")
+            if (!session.startAudio()) append("️ Не удалось запустить аудио.")
             val file = File(fullPath)
             if (!file.exists()) {
                 append("❌ Файл не найден: $fullPath")
@@ -326,218 +330,238 @@ fun DisplayScreen(autoAction: String?) {
     }
 
     // =========================================================================
-    // 3. UI
+    // 3. UI - ОСНОВНОЙ КОНТЕНТ
     // =========================================================================
-    Column(Modifier.padding(8.dp)) {
-        AndroidView(
-            modifier = Modifier.fillMaxWidth().aspectRatio(session.width.toFloat() / session.height),
-            factory = { c ->
-                InputSurfaceView(c, session.width, session.height).apply {
-                    view = this
-                    this.holder.addCallback(object : SurfaceHolder.Callback {
-                        override fun surfaceCreated(h: SurfaceHolder) { holder = h }
-                        override fun surfaceChanged(h: SurfaceHolder, f: Int, w: Int, ht: Int) {}
-                        override fun surfaceDestroyed(h: SurfaceHolder) { DisplayBridge.stop(); holder = null }
-                    })
-                }
-            },
-        )
-        
-        Text("frames: $frames · sound: ${audioFrames / 48000} s", style = MaterialTheme.typography.bodySmall)
-        
-        Text("🛠️ Запуск x86-64 приложения (FEX)", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 8.dp, bottom = 4.dp))
-        
-        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
-            OutlinedTextField(
-                value = customExeDir,
-                onValueChange = { customExeDir = it },
-                label = { Text("📁 Папка в Linux") },
-                modifier = Modifier.weight(1f),
-                singleLine = true,
-                trailingIcon = {
-                    TextButton(onClick = { expandedFolderMenu = true }) { Text("▼", fontSize = 16.sp) }
-                }
+    Box(modifier = Modifier.fillMaxSize()) {
+        Column(Modifier.padding(8.dp)) {
+            AndroidView(
+                modifier = Modifier.fillMaxWidth().aspectRatio(session.width.toFloat() / session.height),
+                factory = { c ->
+                    InputSurfaceView(c, session.width, session.height).apply {
+                        view = this
+                        this.holder.addCallback(object : SurfaceHolder.Callback {
+                            override fun surfaceCreated(h: SurfaceHolder) { holder = h }
+                            override fun surfaceChanged(h: SurfaceHolder, f: Int, w: Int, ht: Int) {}
+                            override fun surfaceDestroyed(h: SurfaceHolder) { DisplayBridge.stop(); holder = null }
+                        })
+                    }
+                },
             )
-            Spacer(modifier = Modifier.width(8.dp))
-            Button(
-                onClick = { scanLinuxDirectory(customExeDir) }, 
-                enabled = !isScanning && customExeDir.isNotBlank(),
-                modifier = Modifier.heightIn(min = 56.dp)
-            ) {
-                Text(if (isScanning) "⏳" else "📂 Scan")
-            }
-        }
-
-        DropdownMenu(expanded = expandedFolderMenu, onDismissRequest = { expandedFolderMenu = false }, modifier = Modifier.fillMaxWidth()) {
-            DropdownMenuItem(text = { Text("${env.x86Root}/usr/bin") }, onClick = { customExeDir = "${env.x86Root}/usr/bin"; expandedFolderMenu = false })
-            DropdownMenuItem(text = { Text("${env.x86Root}/home/user/apps") }, onClick = { customExeDir = "${env.x86Root}/home/user/apps"; expandedFolderMenu = false })
-        }
-
-        OutlinedTextField(
-            value = selectedFileName ?: "",
-            onValueChange = { selectedFileName = it.ifBlank { null } },
-            label = { Text("📄 Файл для запуска") },
-            placeholder = { Text(if (availableBinaries.isEmpty()) "Сначала нажмите 'Scan'" else "Начните вводить имя...") },
-            modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
-            singleLine = true,
-            enabled = availableBinaries.isNotEmpty(),
-            trailingIcon = {
-                if (availableBinaries.isNotEmpty()) {
-                    TextButton(onClick = { expandedFileMenu = true }) { Text("▼", fontSize = 16.sp) }
-                }
-            }
-        )
-
-        DropdownMenu(expanded = expandedFileMenu, onDismissRequest = { expandedFileMenu = false }, modifier = Modifier.fillMaxWidth()) {
-            availableBinaries.forEach { fileName ->
-                DropdownMenuItem(text = { Text(fileName) }, onClick = { selectedFileName = fileName; expandedFileMenu = false })
-            }
-        }
-
-        if (selectedFileName?.endsWith(".AppImage", ignoreCase = true) == true) {
-            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
+            
+            Text("frames: $frames · sound: ${audioFrames / 48000} s", style = MaterialTheme.typography.bodySmall)
+            
+            Text("🛠️ Запуск x86-64 приложения (FEX)", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 8.dp, bottom = 4.dp))
+            
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
                 OutlinedTextField(
-                    value = extractDir,
-                    onValueChange = { extractDir = it },
-                    label = { Text("📂 Директория распаковки") },
-                    placeholder = { Text("$customExeDir/extracted") },
+                    value = customExeDir,
+                    onValueChange = { customExeDir = it },
+                    label = { Text("📁 Папка в Linux") },
                     modifier = Modifier.weight(1f),
-                    singleLine = true
+                    singleLine = true,
+                    trailingIcon = {
+                        TextButton(onClick = { expandedFolderMenu = true }) { Text("▼", fontSize = 16.sp) }
+                    }
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Button(
-                    onClick = {
-                        val appImagePath = File(customExeDir, selectedFileName!!).absolutePath
-                        val target = if (extractDir.isBlank()) {
-                            File(customExeDir, "${selectedFileName!!.removeSuffix(".AppImage").removeSuffix(".appimage")}.extracted").absolutePath
-                        } else extractDir
-                        extractDir = target
-                        extractAppImage(appImagePath, target)
-                    },
-                    enabled = !isExtracting && selectedFileName != null,
+                    onClick = { scanLinuxDirectory(customExeDir) }, 
+                    enabled = !isScanning && customExeDir.isNotBlank(),
                     modifier = Modifier.heightIn(min = 56.dp)
                 ) {
-                    Text(if (isExtracting) "⏳" else "📦 Распаковать")
+                    Text(if (isScanning) "⏳" else "📂 Scan")
                 }
             }
 
-            if (extractedFiles.isNotEmpty()) {
-                Text("📂 Распакованные файлы (${extractedFiles.size}):", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 8.dp))
-                FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.padding(top = 4.dp)) {
-                    extractedFiles.take(20).forEach { fileName ->
-                        OutlinedButton(onClick = { launchExtractedApp(fileName) }, modifier = Modifier.heightIn(min = 36.dp)) {
-                            Text(fileName, fontSize = 10.sp)
+            DropdownMenu(expanded = expandedFolderMenu, onDismissRequest = { expandedFolderMenu = false }, modifier = Modifier.fillMaxWidth()) {
+                DropdownMenuItem(text = { Text("${env.x86Root}/usr/bin") }, onClick = { customExeDir = "${env.x86Root}/usr/bin"; expandedFolderMenu = false })
+                DropdownMenuItem(text = { Text("${env.x86Root}/home/user/apps") }, onClick = { customExeDir = "${env.x86Root}/home/user/apps"; expandedFolderMenu = false })
+            }
+
+            OutlinedTextField(
+                value = selectedFileName ?: "",
+                onValueChange = { selectedFileName = it.ifBlank { null } },
+                label = { Text("📄 Файл для запуска") },
+                placeholder = { Text(if (availableBinaries.isEmpty()) "Сначала нажмите 'Scan'" else "Начните вводить имя...") },
+                modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                singleLine = true,
+                enabled = availableBinaries.isNotEmpty(),
+                trailingIcon = {
+                    if (availableBinaries.isNotEmpty()) {
+                        TextButton(onClick = { expandedFileMenu = true }) { Text("▼", fontSize = 16.sp) }
+                    }
+                }
+            )
+
+            DropdownMenu(expanded = expandedFileMenu, onDismissRequest = { expandedFileMenu = false }, modifier = Modifier.fillMaxWidth()) {
+                availableBinaries.forEach { fileName ->
+                    DropdownMenuItem(text = { Text(fileName) }, onClick = { selectedFileName = fileName; expandedFileMenu = false })
+                }
+            }
+
+            if (selectedFileName?.endsWith(".AppImage", ignoreCase = true) == true) {
+                Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
+                    OutlinedTextField(
+                        value = extractDir,
+                        onValueChange = { extractDir = it },
+                        label = { Text("📂 Директория распаковки") },
+                        placeholder = { Text("$customExeDir/extracted") },
+                        modifier = Modifier.weight(1f),
+                        singleLine = true
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Button(
+                        onClick = {
+                            val appImagePath = File(customExeDir, selectedFileName!!).absolutePath
+                            val target = if (extractDir.isBlank()) {
+                                File(customExeDir, "${selectedFileName!!.removeSuffix(".AppImage").removeSuffix(".appimage")}.extracted").absolutePath
+                            } else extractDir
+                            extractDir = target
+                            extractAppImage(appImagePath, target)
+                        },
+                        enabled = !isExtracting && selectedFileName != null,
+                        modifier = Modifier.heightIn(min = 56.dp)
+                    ) {
+                        Text(if (isExtracting) "" else "📦 Распаковать")
+                    }
+                }
+
+                if (extractedFiles.isNotEmpty()) {
+                    Text("📂 Распакованные файлы (${extractedFiles.size}):", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 8.dp))
+                    FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.padding(top = 4.dp)) {
+                        extractedFiles.take(20).forEach { fileName ->
+                            OutlinedButton(onClick = { launchExtractedApp(fileName) }, modifier = Modifier.heightIn(min = 36.dp)) {
+                                Text(fileName, fontSize = 10.sp)
+                            }
                         }
                     }
-                }
-                if (extractedFiles.size > 20) {
-                    Text("... и ещё ${extractedFiles.size - 20} файлов", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    if (extractedFiles.size > 20) {
+                        Text("... и ещё ${extractedFiles.size - 20} файлов", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
                 }
             }
-        }
 
-        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 4.dp)) {
-            Checkbox(checked = isAppImageMode, onCheckedChange = { isAppImageMode = it })
-            Column(modifier = Modifier.padding(start = 4.dp)) {
-                Text("AppImage режим", style = MaterialTheme.typography.bodyMedium)
-                Text("Автоматически: TMPDIR, --appimage-extract-and-run", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 4.dp)) {
+                Checkbox(checked = isAppImageMode, onCheckedChange = { isAppImageMode = it })
+                Column(modifier = Modifier.padding(start = 4.dp)) {
+                    Text("AppImage режим", style = MaterialTheme.typography.bodyMedium)
+                    Text("Автоматически: TMPDIR, --appimage-extract-and-run", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                }
             }
-        }
 
-        OutlinedTextField(
-            value = customEnvVars,
-            onValueChange = { customEnvVars = it },
-            label = { Text("🌍 Переменные окружения (KEY=VALUE через пробел)") },
-            placeholder = { Text("Например: TMPDIR=/tmp SDL_VIDEODRIVER=x11") },
-            modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
-            singleLine = true
-        )
+            OutlinedTextField(
+                value = customEnvVars,
+                onValueChange = { customEnvVars = it },
+                label = { Text("🌍 Переменные окружения (KEY=VALUE через пробел)") },
+                placeholder = { Text("Например: TMPDIR=/tmp SDL_VIDEODRIVER=x11") },
+                modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                singleLine = true
+            )
 
-        OutlinedTextField(
-            value = customExeArgs,
-            onValueChange = { customExeArgs = it },
-            label = { Text("Аргументы (опционально)") },
-            placeholder = { Text("Например: --fullscreen") },
-            modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
-            singleLine = true
-        )
+            OutlinedTextField(
+                value = customExeArgs,
+                onValueChange = { customExeArgs = it },
+                label = { Text("Аргументы (опционально)") },
+                placeholder = { Text("Например: --fullscreen") },
+                modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                singleLine = true
+            )
 
-        Button(
-            onClick = { launchCustomX86AppByPath(customExeDir, selectedFileName) },
-            enabled = selectedFileName != null && customExeDir.isNotBlank(),
-            modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
-        ) {
-            Text("🚀 Запустить через FEX")
-        }
-
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 16.dp)) {
-            Button(onClick = { startX() }) { Text("Start X") }
-            Button(onClick = { thread { startSteam() } }) { Text("Steam") }
-            Button(onClick = { thread { startDota() } }) { Text("Dota 2") }
-            Button(onClick = { thread { startX().join(); session.launch("vkcube", listOf("${env.root}/usr/bin/vkcube")) } }) { Text("vkcube arm64") }
-            Button(onClick = { thread { startX().join(); session.launch("vkcube-x86", listOf("${env.root}/usr/bin/FEX", "${env.x86Root}/usr/bin/vkcube")) } }) { Text("vkcube x86") }
-            OutlinedButton(onClick = { view?.requestPointerCapture() }) { Text("Mouse") }
-            OutlinedButton(onClick = { view?.let { v -> v.requestFocus(); ctx.getSystemService(android.view.inputmethod.InputMethodManager::class.java)?.showSoftInput(v, 0) } }) { Text("Keyboard") }
-            Button(onClick = { sh("tone", "${env.root}/opt/fexdroid-tests/tone 3 | pacat $toneRaw") }) { Text("Sound") }
-            Button(onClick = { thread { startX().join(); session.launch("xev", listOf("${env.root}/usr/bin/xev")) } }) { Text("xev") }
-            OutlinedButton(onClick = { DisplayBridge.stop(); thread(name = "x-stop") { session.stopAll() } }) { Text("Stop") }
-        }
-
-        // ===== СВОРАЧИВАЕМЫЙ ЛОГ =====
-        val logLineCount = log.count { it == '\n' }
-        val logIndicator = if (logExpanded) "▲ Свернуть" else "▼ Показать лог ($logLineCount строк)"
-        
-        OutlinedButton(
-            onClick = { logExpanded = !logExpanded },
-            modifier = Modifier.fillMaxWidth().padding(top = 12.dp)
-        ) {
-            Text(logIndicator)
-        }
-
-        if (logExpanded) {
-            Row(
-                modifier = Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 4.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+            Button(
+                onClick = { launchCustomX86AppByPath(customExeDir, selectedFileName) },
+                enabled = selectedFileName != null && customExeDir.isNotBlank(),
+                modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
             ) {
-                Text("📜 Лог вывода", style = MaterialTheme.typography.titleSmall)
-                Row {
-                    // <-- ИСПРАВЛЕНО: вызов через scope.launch
-                    TextButton(onClick = { 
-                        scope.launch { logScrollState.animateScrollTo(0) }
-                    }) {
-                        Text("⬆️ Вверх")
+                Text("🚀 Запустить через FEX")
+            }
+
+            FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 16.dp)) {
+                Button(onClick = { startX() }) { Text("Start X") }
+                Button(onClick = { thread { startSteam() } }) { Text("Steam") }
+                Button(onClick = { thread { startDota() } }) { Text("Dota 2") }
+                Button(onClick = { thread { startX().join(); session.launch("vkcube", listOf("${env.root}/usr/bin/vkcube")) } }) { Text("vkcube arm64") }
+                Button(onClick = { thread { startX().join(); session.launch("vkcube-x86", listOf("${env.root}/usr/bin/FEX", "${env.x86Root}/usr/bin/vkcube")) } }) { Text("vkcube x86") }
+                OutlinedButton(onClick = { view?.requestPointerCapture() }) { Text("Mouse") }
+                OutlinedButton(onClick = { view?.let { v -> v.requestFocus(); ctx.getSystemService(android.view.inputmethod.InputMethodManager::class.java)?.showSoftInput(v, 0) } }) { Text("Keyboard") }
+                Button(onClick = { sh("tone", "${env.root}/opt/fexdroid-tests/tone 3 | pacat $toneRaw") }) { Text("Sound") }
+                Button(onClick = { thread { startX().join(); session.launch("xev", listOf("${env.root}/usr/bin/xev")) } }) { Text("xev") }
+                OutlinedButton(onClick = { DisplayBridge.stop(); thread(name = "x-stop") { session.stopAll() } }) { Text("Stop") }
+            }
+
+            // Кнопка для показа/скрытия лога (всегда видна внизу основного контента)
+            OutlinedButton(
+                onClick = { logExpanded = !logExpanded },
+                modifier = Modifier.fillMaxWidth().padding(top = 12.dp, bottom = 8.dp)
+            ) {
+                val logLineCount = log.count { it == '\n' }
+                val logIndicator = if (logExpanded) "▲ Свернуть лог" else "▼ Показать лог ($logLineCount строк)"
+                Text(logIndicator)
+            }
+        }
+
+        // ===== ПЛАВАЮЩИЙ ЛОГ (оверлей поверх всего контента) =====
+        if (logExpanded) {
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .fillMaxHeight(0.6f)  // Занимает 60% высоты экрана
+                    .align(Alignment.BottomCenter)  // Прижат к низу
+                    .zIndex(1f)  // Поверх всего
+                    .padding(8.dp)
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(
+                            MaterialTheme.colorScheme.surface.copy(alpha = 0.95f),
+                            RoundedCornerShape(12.dp)
+                        )
+                        .padding(12.dp)
+                ) {
+                    // Заголовок с кнопками управления
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(" Лог вывода", style = MaterialTheme.typography.titleMedium)
+                        Row {
+                            TextButton(onClick = { 
+                                scope.launch { logScrollState.animateScrollTo(0) }
+                            }) {
+                                Text("⬆️", fontSize = 16.sp)
+                            }
+                            TextButton(onClick = { 
+                                scope.launch { logScrollState.animateScrollTo(logScrollState.maxValue) }
+                            }) {
+                                Text("️", fontSize = 16.sp)
+                            }
+                            TextButton(onClick = { 
+                                clipboardManager.setText(AnnotatedString(log))
+                                append("📋 Лог скопирован!")
+                            }) {
+                                Text("📋", fontSize = 16.sp)
+                            }
+                            TextButton(onClick = { logExpanded = false }) {
+                                Text("✕", fontSize = 18.sp)
+                            }
+                        }
                     }
-                    TextButton(onClick = { 
-                        scope.launch { logScrollState.animateScrollTo(logScrollState.maxValue) }
-                    }) {
-                        Text("⬇️ Вниз")
-                    }
-                    TextButton(onClick = { 
-                        clipboardManager.setText(AnnotatedString(log))
-                        append("📋 Лог скопирован!")
-                    }) {
-                        Text("📋 Копировать")
+                    
+                    // Сам лог с прокруткой
+                    SelectionContainer {
+                        Text(
+                            text = log.ifEmpty { "Ожидание событий..." }, 
+                            fontFamily = FontFamily.Monospace, 
+                            fontSize = 10.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(top = 8.dp)
+                                .verticalScroll(logScrollState)
+                        )
                     }
                 }
-            }
-            
-            SelectionContainer {
-                Text(
-                    text = log.ifEmpty { "Ожидание событий..." }, 
-                    fontFamily = FontFamily.Monospace, 
-                    fontSize = 10.sp,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .heightIn(min = 120.dp, max = 280.dp)
-                        .verticalScroll(logScrollState)
-                        .padding(8.dp)
-                        .background(
-                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f), 
-                            RoundedCornerShape(8.dp)
-                        )
-                )
             }
         }
     }
