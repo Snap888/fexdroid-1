@@ -183,12 +183,13 @@ fun PlayerScreen() {
             runningInput && mode == OnScreenControlMode.Keys -> {
                 OnScreenKeys.Strip("left", remember(AppSettings.keysLeft) { OnScreenKeys.parse(AppSettings.keysLeft) },
                     Modifier.align(Alignment.CenterStart).padding(start = edge))
+                // The menu button would sit on the keys: it is the first of them.
                 OnScreenKeys.Strip("right", remember(AppSettings.keysRight) { listOf(OnScreenKeys.Menu) + OnScreenKeys.parse(AppSettings.keysRight) },
                     Modifier.align(Alignment.CenterEnd).padding(end = edge), onMenu = { menuOpen = !menuOpen })
             }
-            runningInput && (mode == OnScreenControlMode.Gamepad || mode == OnScreenControlMode.Custom) -> {
+            runningInput && !editingControls && (mode == OnScreenControlMode.Gamepad || mode == OnScreenControlMode.MouseKeyboard) -> {
                 val profile = remember(mode, AppSettings.customControlProfile) {
-                    AppSettings.activeControlProfile() ?: ControlProfile.defaultGamepad()
+                    AppSettings.activeControlProfile() ?: if (mode == OnScreenControlMode.MouseKeyboard) ControlProfile.defaultMouseKeyboard() else ControlProfile.defaultGamepad()
                 }
                 OnScreenControls.Overlay(
                     profile = profile,
@@ -196,20 +197,42 @@ fun PlayerScreen() {
                 )
             }
             state is SessionState.Running || state is SessionState.Starting -> {
+                // Middle of the right edge: games keep their own buttons and figures in the corners.
                 FloatingMenuButton(Modifier.align(Alignment.CenterEnd).displayCutoutPadding()) { menuOpen = !menuOpen }
             }
         }
 
         AnimatedVisibility(menuOpen, Modifier.align(Alignment.TopEnd).displayCutoutPadding(), enter = fadeIn(), exit = fadeOut()) {
+            val canEdit = AppSettings.controlMode == OnScreenControlMode.Gamepad ||
+                AppSettings.controlMode == OnScreenControlMode.MouseKeyboard
             GameMenu(
                 keyboardShown = keyboardShown, mouseCaptured = mouseCaptured,
                 onKeyboard = { menuOpen = false; toggleKeyboard() },
                 onKeys = { menuOpen = false; AppSettings.cycleControlMode() },
                 onMouse = { menuOpen = false; toggleMouse() },
                 onLog = { menuOpen = false; logOpen = true },
+                onEditControls = if (canEdit) {{ menuOpen = false; editingControls = true }} else null,
                 onMinimize = { menuOpen = false; GameSession.playerVisible = false },
                 onStop = { menuOpen = false; confirmStop = true },
                 onClose = { menuOpen = false },
+            )
+        }
+
+        // In-game layout editor (Gamepad / Mouse-Keyboard modes).
+        if (editingControls) {
+            val initial = AppSettings.activeControlProfile()
+                ?: if (AppSettings.controlMode == OnScreenControlMode.MouseKeyboard)
+                    ControlProfile.defaultMouseKeyboard()
+                else ControlProfile.defaultGamepad()
+            ControlEditorScreen(
+                initial = initial,
+                onSave = { profile ->
+                    AppSettings.updateCustomControlProfile(profile.toJsonString())
+                    // Reload overlay with the saved profile while staying in the current mode.
+                    OnScreenControls.loadProfile(profile)
+                    editingControls = false
+                },
+                onCancel = { editingControls = false },
             )
         }
 
@@ -277,7 +300,7 @@ private fun GameMenu(
                 OnScreenControlMode.Off -> str(R.string.settings_control_off)
                 OnScreenControlMode.Keys -> str(R.string.settings_control_keys)
                 OnScreenControlMode.Gamepad -> str(R.string.settings_control_gamepad)
-                OnScreenControlMode.Custom -> str(R.string.settings_control_custom)
+                OnScreenControlMode.MouseKeyboard -> str(R.string.settings_control_mouse_keyboard)
             })
             MenuItem(AppIcons.Mouse, if (mouseCaptured) str(R.string.player_release_mouse) else str(R.string.player_capture_mouse),
                 onMouse, str(R.string.player_capture_hint))
