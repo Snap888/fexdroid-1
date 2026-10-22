@@ -33,6 +33,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -44,6 +45,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.viewinterop.AndroidView
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
 import java.io.File
 import kotlin.concurrent.thread
 
@@ -55,6 +57,7 @@ import kotlin.concurrent.thread
 fun DisplayScreen(autoAction: String?) {
     val ctx = LocalContext.current
     val clipboardManager = LocalClipboardManager.current
+    val scope = rememberCoroutineScope() // <-- ДОБАВЛЕНО для работы с корутинами в onClick
     val env = remember { LinuxEnv(ctx) }
     var log by remember { mutableStateOf("") }
     
@@ -72,12 +75,11 @@ fun DisplayScreen(autoAction: String?) {
     var view by remember { mutableStateOf<InputSurfaceView?>(null) }
     var frames by remember { mutableStateOf(0L) }
 
-    // ===== Состояние сворачивания лога =====
     var logExpanded by remember { mutableStateOf(false) }
     val logScrollState = rememberScrollState()
 
     // =========================================================================
-    // 1. ФУНКЦИИ (строго сверху вниз)
+    // 1. ФУНКЦИИ
     // =========================================================================
 
     fun startX() = thread(name = "start-x") {
@@ -106,7 +108,6 @@ fun DisplayScreen(autoAction: String?) {
         if (session.startAudio()) session.launch(title, listOf("${env.root}/bin/sh", "-c", cmd))
     }
 
-    // ===== Переменные для запуска приложений =====
     var customExeDir by remember { mutableStateOf("${env.x86Root}/usr/bin") }
     var selectedFileName by remember { mutableStateOf<String?>(null) }
     var customExeArgs by remember { mutableStateOf("") }
@@ -164,7 +165,7 @@ fun DisplayScreen(autoAction: String?) {
             return
         }
         isExtracting = true
-        logExpanded = true  // Автоматически раскрываем лог при распаковке
+        logExpanded = true
         thread(name = "extract-appimage") {
             try {
                 val target = File(targetDir)
@@ -189,7 +190,7 @@ fun DisplayScreen(autoAction: String?) {
                     append("📂 squashfs-root: ${files.take(10).joinToString(", ")}")
                     val appRun = files.find { it == "AppRun" }
                     val desktopFile = files.find { it.endsWith(".desktop") }
-                    if (appRun != null) append(" Найден AppRun: squashfs-root/AppRun")
+                    if (appRun != null) append("🎯 Найден AppRun: squashfs-root/AppRun")
                     else if (desktopFile != null) append("🎯 Найден .desktop: squashfs-root/$desktopFile")
                 } else {
                     append("⚠️ squashfs-root не найден после распаковки")
@@ -271,7 +272,7 @@ fun DisplayScreen(autoAction: String?) {
             val envVars = parseEnvVars(customEnvVars)
             val envPrefix = envVars.joinToString(" ") { "${it.first}=${it.second}" }
             val fullCmdStr = if (envPrefix.isNotBlank()) "$envPrefix ${cmd.joinToString(" ")}" else cmd.joinToString(" ")
-            append(" Распакованный: $fullCmdStr")
+            append("🚀 Распакованный: $fullCmdStr")
             session.launch("extracted-$extractedFileName", listOf("${env.root}/bin/sh", "-c", fullCmdStr))
         }
     }
@@ -297,7 +298,6 @@ fun DisplayScreen(autoAction: String?) {
         }
     }
     
-    // Автопрокрутка лога вниз при появлении новых строк
     LaunchedEffect(log) {
         if (logExpanded) {
             delay(50)
@@ -345,7 +345,6 @@ fun DisplayScreen(autoAction: String?) {
         
         Text("frames: $frames · sound: ${audioFrames / 48000} s", style = MaterialTheme.typography.bodySmall)
         
-        // ===== ПАНЕЛЬ ЗАПУСКА =====
         Text("🛠️ Запуск x86-64 приложения (FEX)", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 8.dp, bottom = 4.dp))
         
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
@@ -395,13 +394,12 @@ fun DisplayScreen(autoAction: String?) {
             }
         }
 
-        // ===== КНОПКА РАСПАКОВКИ APPIMAGE =====
         if (selectedFileName?.endsWith(".AppImage", ignoreCase = true) == true) {
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
                 OutlinedTextField(
                     value = extractDir,
                     onValueChange = { extractDir = it },
-                    label = { Text(" Директория распаковки") },
+                    label = { Text("📂 Директория распаковки") },
                     placeholder = { Text("$customExeDir/extracted") },
                     modifier = Modifier.weight(1f),
                     singleLine = true
@@ -438,7 +436,6 @@ fun DisplayScreen(autoAction: String?) {
             }
         }
 
-        // ===== НАСТРОЙКИ ЗАПУСКА =====
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 4.dp)) {
             Checkbox(checked = isAppImageMode, onCheckedChange = { isAppImageMode = it })
             Column(modifier = Modifier.padding(start = 4.dp)) {
@@ -473,7 +470,6 @@ fun DisplayScreen(autoAction: String?) {
             Text("🚀 Запустить через FEX")
         }
 
-        // Стандартные кнопки
         FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 16.dp)) {
             Button(onClick = { startX() }) { Text("Start X") }
             Button(onClick = { thread { startSteam() } }) { Text("Steam") }
@@ -506,13 +502,14 @@ fun DisplayScreen(autoAction: String?) {
             ) {
                 Text("📜 Лог вывода", style = MaterialTheme.typography.titleSmall)
                 Row {
+                    // <-- ИСПРАВЛЕНО: вызов через scope.launch
                     TextButton(onClick = { 
-                        logScrollState.animateScrollTo(0)
+                        scope.launch { logScrollState.animateScrollTo(0) }
                     }) {
                         Text("⬆️ Вверх")
                     }
                     TextButton(onClick = { 
-                        logScrollState.animateScrollTo(logScrollState.maxValue)
+                        scope.launch { logScrollState.animateScrollTo(logScrollState.maxValue) }
                     }) {
                         Text("⬇️ Вниз")
                     }
@@ -520,7 +517,7 @@ fun DisplayScreen(autoAction: String?) {
                         clipboardManager.setText(AnnotatedString(log))
                         append("📋 Лог скопирован!")
                     }) {
-                        Text(" Копировать")
+                        Text("📋 Копировать")
                     }
                 }
             }
