@@ -24,8 +24,48 @@ PKGS=(
   fontconfig fonts-liberation libdbus-1-3 libdbus-1-3:i386 dbus-daemon dbus-x11
   libpulse0 libpulse0:i386 pulseaudio-utils libnss3 libnspr4 libgtk-3-0t64 libgbm1 libegl1
   libvulkan1 libvulkan1:i386 vulkan-tools libusb-1.0-0 lsof procps
-  libibus-1.0-5 libxtst6 libxtst6:i386 libvdpau1          # steamwebhelper (ldd, outside its container)
+  libibus-1.0-5 libxtst6 libxtst6:i386 libvdpau1
+
+  # === OpenGL / GLVND (нужно для Qt OpenGL и shadPS4QtLauncher) ===
+  libopengl0
+  libgl1
+  libglx0
+  libglvnd0
+
+  # === Full XFCE4 desktop ===
+  xfce4
+  xfce4-goodies
+  xfce4-terminal
+  xfce4-notifyd
+  desktop-base
+  tango-icon-theme
+  thunar-volman
+  xfce4-power-manager
+  mousepad
+  ristretto
+
+  # === Qt 5 runtime ===
+  libqt5core5t64
+  libqt5gui5t64
+  libqt5widgets5t64
+  libqt5network5t64
+  libqt5dbus5t64
+  libqt5svg5
+  libqt5x11extras5
+  qt5-image-formats-plugins
+  qt5-gtk-platformtheme
+
+  # === Qt 6 runtime ===
+  libqt6core6t64
+  libqt6gui6
+  libqt6widgets6
+  libqt6network6
+  libqt6dbus6
+  libqt6svg6
+  qt6-image-formats-plugins
+  qt6-qpa-plugins
 )
+
 cname="fexdroid-steamfs-$$"
 docker rm -f "$cname" >/dev/null 2>&1 || true
 docker run --platform linux/amd64 --name "$cname" debian:trixie-slim bash -euc "
