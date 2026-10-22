@@ -1,14 +1,4 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <string name="settings_control_mode">On-screen controls</string>
-    <string name="settings_control_mode_about">How you play by touch. Gamepad needs “Gamepads” above switched on so the virtual stick reaches Steam.</string>
-    <string name="settings_control_off">Off</string>
-    <string name="settings_control_keys">Keys</string>
-    <string name="settings_control_gamepad">Gamepad</string>
-    <string name="settings_control_custom">Custom</string>
-    <string name="settings_control_custom_about">Your saved layout. Reset loads the default gamepad. A full editor comes later.</string>
-    <string name="settings_control_custom_reset">Reset custom to default gamepad</string>
-    <string name="player_controls_hide">Hide on-screen controls</string>
-    <string name="player_controls_show">On-screen controls</string>
-    <string name="player_controls_hint">Keys, virtual gamepad, or your layout</string>
+<!-- broken - restore from artifacts -->
 </resources>
