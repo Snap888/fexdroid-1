@@ -11,17 +11,14 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material3.Button
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -48,76 +45,25 @@ fun DisplayScreen(autoAction: String?) {
     val ctx = LocalContext.current
     val env = remember { LinuxEnv(ctx) }
     var log by remember { mutableStateOf("") }
+    
     fun append(line: String) {
         Log.i("fexdroid-display", line)
         log = (log + line + "\n").takeLast(6000)
     }
+    
     val session = remember {
         val r = AppSettings.resolution
         XSession(env, r.width, r.height) { line -> append(line) }
     }
+    
     var holder by remember { mutableStateOf<SurfaceHolder?>(null) }
     var view by remember { mutableStateOf<InputSurfaceView?>(null) }
     var frames by remember { mutableStateOf(0L) }
 
-    // ===== 1. Переменные для выбора файла внутри Linux-контейнера =====
-    var customExePath by remember { mutableStateOf("${env.x86Root}/usr/bin/vkcube") }
-    var customExeArgs by remember { mutableStateOf("") }
-    
-    var availableBinaries by remember { mutableStateOf<List<String>>(emptyList()) }
-    var expandedDropdown by remember { mutableStateOf(false) }
-    var isScanning by remember { mutableStateOf(false) }
+    // =========================================================================
+    // 1. ФУНКЦИИ ОБЪЯВЛЯЮТСЯ ЗДЕСЬ (строго сверху вниз, чтобы компилятор их видел)
+    // =========================================================================
 
-    fun scanLinuxDirectory(dirPath: String) {
-        isScanning = true
-        thread(name = "scan-binaries") {
-            try {
-                val dir = File(dirPath)
-                val files = if (dir.exists() && dir.isDirectory) {
-                    dir.listFiles()?.filter { 
-                        it.isFile && it.canExecute()
-                    }?.map { it.name }?.sorted() ?: emptyList()
-                } else {
-                    emptyList()
-                }
-                availableBinaries = files.take(200)
-                append("📂 Найдено исполняемых файлов в $dirPath: ${files.size}")
-            } catch (e: Exception) {
-                append("❌ Ошибка чтения директории: ${e.message}")
-                availableBinaries = emptyList()
-            } finally {
-                isScanning = false
-            }
-        }
-    }
-
-    fun launchCustomX86AppByPath(linuxPath: String) {
-        if (linuxPath.isBlank()) {
-            append("⚠️ Ошибка: путь к исполняемому файлу пуст.")
-            return
-        }
-
-        thread(name = "custom-x86-app") {
-            startX().join()
-            if (!session.startAudio()) {
-                append("⚠️ Не удалось запустить аудио.")
-            }
-
-            val file = File(linuxPath)
-            if (!file.exists()) {
-                append("❌ Файл не найден по пути: $linuxPath")
-                return@thread
-            }
-
-            val args = customExeArgs.split(" ").filter { it.isNotBlank() }
-            val cmd = mutableListOf("${env.root}/usr/bin/FEX", linuxPath).apply { addAll(args) }
-
-            append("🚀 Запуск: ${cmd.joinToString(" ")}")
-            session.launch("custom-x86-${file.name}", cmd)
-        }
-    }
-
-    // ===== 2. Базовые функции X11 =====
     fun startX() = thread(name = "start-x") {
         if (!env.ensureInstalled(::append)) return@thread
         if (!session.startX()) { append("Xvfb did not report a framebuffer (see the log)."); return@thread }
@@ -144,7 +90,65 @@ fun DisplayScreen(autoAction: String?) {
         if (session.startAudio()) session.launch(title, listOf("${env.root}/bin/sh", "-c", cmd))
     }
 
-    // ===== 3. Эффекты жизненного цикла =====
+    // ===== Переменные для выбора файла =====
+    var customExePath by remember { mutableStateOf("${env.x86Root}/usr/bin/vkcube") }
+    var customExeArgs by remember { mutableStateOf("") }
+    var availableBinaries by remember { mutableStateOf<List<String>>(emptyList()) }
+    var expandedDropdown by remember { mutableStateOf(false) }
+    var isScanning by remember { mutableStateOf(false) }
+
+    fun scanLinuxDirectory(dirPath: String) {
+        isScanning = true
+        thread(name = "scan-binaries") {
+            try {
+                val dir = File(dirPath)
+                val files = if (dir.exists() && dir.isDirectory) {
+                    dir.listFiles()?.filter { it.isFile && it.canExecute() }
+                        ?.map { it.name }?.sorted() ?: emptyList()
+                } else {
+                    emptyList()
+                }
+                availableBinaries = files.take(200)
+                append("📂 Найдено исполняемых файлов в $dirPath: ${files.size}")
+            } catch (e: Exception) {
+                append("❌ Ошибка чтения директории: ${e.message}")
+                availableBinaries = emptyList()
+            } finally {
+                isScanning = false
+            }
+        }
+    }
+
+    fun launchCustomX86AppByPath(linuxPath: String) {
+        if (linuxPath.isBlank()) {
+            append("⚠️ Ошибка: путь к исполняемому файлу пуст.")
+            return
+        }
+
+        thread(name = "custom-x86-app") {
+            // startX теперь гарантированно известен компилятору, так как объявлен выше
+            startX().join()
+            if (!session.startAudio()) {
+                append("⚠️ Не удалось запустить аудио.")
+            }
+
+            val file = File(linuxPath)
+            if (!file.exists()) {
+                append("❌ Файл не найден по пути: $linuxPath")
+                return@thread
+            }
+
+            val args = customExeArgs.split(" ").filter { it.isNotBlank() }
+            val cmd = mutableListOf("${env.root}/usr/bin/FEX", linuxPath).apply { addAll(args) }
+
+            append("🚀 Запуск: ${cmd.joinToString(" ")}")
+            session.launch("custom-x86-${file.name}", cmd)
+        }
+    }
+
+    // =========================================================================
+    // 2. ЭФФЕКТЫ ЖИЗНЕННОГО ЦИКЛА
+    // =========================================================================
     val toneRaw = "--raw --format=s16le --rate=48000 --channels=2"
 
     DisposableEffect(Unit) { 
@@ -183,7 +187,9 @@ fun DisplayScreen(autoAction: String?) {
         }
     }
 
-    // ===== 4. UI =====
+    // =========================================================================
+    // 3. UI
+    // =========================================================================
     Column(Modifier.padding(8.dp)) {
         AndroidView(
             modifier = Modifier.fillMaxWidth().aspectRatio(session.width.toFloat() / session.height),
@@ -204,20 +210,19 @@ fun DisplayScreen(autoAction: String?) {
         // ===== ПАНЕЛЬ ЗАПУСКА КАСТОМНЫХ x86-64 ПРИЛОЖЕНИЙ =====
         Text("🛠️ Запуск x86-64 приложения (FEX)", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 8.dp))
         
-        // Стабильный TextField с иконкой выпадающего списка
         OutlinedTextField(
             value = customExePath,
             onValueChange = { customExePath = it },
             label = { Text("Путь к исполняемому файлу в Linux") },
             trailingIcon = {
-                IconButton(onClick = { expandedDropdown = true }) {
-                    Icon(Icons.Default.ArrowDropDown, contentDescription = "Открыть список")
+                // Используем простой текст вместо Icons, чтобы избежать ошибок зависимости
+                TextButton(onClick = { expandedDropdown = true }) {
+                    Text("▼", fontSize = 18.sp)
                 }
             },
             modifier = Modifier.fillMaxWidth().padding(top = 4.dp)
         )
         
-        // Стабильный DropdownMenu (без устаревшего ExposedDropdownMenuBox)
         DropdownMenu(
             expanded = expandedDropdown,
             onDismissRequest = { expandedDropdown = false },
