@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="editor_title">Editor de aspect</string>
+    <string name="editor_save">Salvează</string>
+    <string name="editor_open">Editează aspectul</string>
+    <string name="editor_empty">Adaugă un buton, stick sau D-pad, apoi trage-l unde vrei.</string>
+    <string name="editor_hint">Atinge un control ca să-l selectezi. Trage ca să-l muți. Salvează îl păstrează ca Propriu.</string>
+    <string name="editor_add_button">+ Buton</string>
+    <string name="editor_add_stick">+ Stick</string>
+    <string name="editor_add_dpad">+ D-pad</string>
+    <string name="editor_delete">Șterge</string>
+    <string name="editor_profile_name">Numele aspectului</string>
+    <string name="editor_type_button">Buton</string>
+    <string name="editor_type_stick">Stick</string>
+    <string name="editor_type_dpad">D-pad</string>
+    <string name="editor_label">Etichetă</string>
+    <string name="editor_action">Acțiune</string>
+    <string name="editor_toggle">Comutare (sticky)</string>
+    <string name="editor_stick_mode">Mod stick</string>
+    <string name="editor_deadzone">Zonă moartă</string>
+    <string name="editor_left_stick">Stick stânga</string>
+    <string name="editor_right_stick">Stick dreapta</string>
+    <string name="editor_eight_way">8 direcții</string>
+    <string name="editor_use_hat">Folosește axe HAT</string>
+    <string name="editor_scale">Mărime</string>
+    <string name="editor_opacity">Opacitate</string>
+</resources>
