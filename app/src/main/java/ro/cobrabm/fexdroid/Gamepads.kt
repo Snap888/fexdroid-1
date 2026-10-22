@@ -28,9 +28,19 @@ object PadBridge {
  * (FEX patch 0006; NOTES N-054). Each Android gamepad gets a slot; the slot's events use the
  * codes of the kernel's xpad driver, which SDL and Steam map without configuration.
  * Gamepad input never reaches the X server while a session runs.
+ *
+ * On-screen controls (Gamepad/Custom modes) also get a pad node, opened at [start] so Steam
+ * finds it when it scans /dev/input.
  */
 object Gamepads {
     private const val MAX_PADS = 4
+    /**
+     * Slot for on-screen controls (Gamepad/Custom). Opened at [start] so Steam/SDL see
+     * /dev/input/event20x before they scan. -1 when none.
+     */
+    private var virtualSlot = -1
+    /** Slot used by [OnScreenControls], or -1. */
+    val onScreenSlot get() = virtualSlot
     private const val EV_KEY = 1
     private const val EV_ABS = 3
     private const val ABS_X = 0x00; private const val ABS_Y = 0x01; private const val ABS_Z = 0x02
@@ -59,8 +69,6 @@ object Gamepads {
         init {
             for (r in device.motionRanges) if (r.isFromSource(InputDevice.SOURCE_JOYSTICK)) ranges[r.axis] = r
             val analogTriggers = MotionEvent.AXIS_LTRIGGER in ranges || MotionEvent.AXIS_BRAKE in ranges
-            // Most pads: right stick on Z/RZ, triggers on LTRIGGER/RTRIGGER (or BRAKE/GAS). Older
-            // ones put the right stick on RX/RY and the triggers on Z/RZ.
             if (!analogTriggers && MotionEvent.AXIS_RX in ranges && MotionEvent.AXIS_RY in ranges) {
                 rightX = MotionEvent.AXIS_RX; rightY = MotionEvent.AXIS_RY
                 leftTrigger = MotionEvent.AXIS_Z; rightTrigger = MotionEvent.AXIS_RZ
@@ -94,10 +102,14 @@ object Gamepads {
      * <rootfs>/usr/share/fex-emu/fexdroid-input (FEX's global data directory).
      */
     fun start(ctx: Context, dir: File, log: (String) -> Unit) {
+        // PadBridge + on-screen node on this thread so the nodes exist before Steam launches
+        // (start runs from the session worker; the main-thread post below only attaches Android devices).
+        if (on) return
+        log(PadBridge.start(dir.path))
+        on = true
+        if (needsOnScreenPad()) ensureVirtualPad(log)
         Handler(Looper.getMainLooper()).post {
-            if (on) return@post
-            log(PadBridge.start(dir.path))
-            on = true
+            if (!on) return@post
             val im = ctx.getSystemService(InputManager::class.java)
             inputManager = im
             im.registerInputDeviceListener(listener, Handler(Looper.getMainLooper()))
@@ -112,21 +124,52 @@ object Gamepads {
             inputManager?.unregisterInputDeviceListener(listener)
             inputManager = null
             pads.clear()
+            virtualSlot = -1
             PadBridge.stop()
         }
     }
 
     /** For the report: "name: slot, readers" per pad. */
-    fun describe(): String = if (!on) "off" else if (pads.isEmpty()) "on, none connected" else
-        pads.entries.joinToString("; ") { (id, p) ->
-            "${InputDevice.getDevice(id)?.name ?: id} = event${200 + p.slot}, open by ${PadBridge.readers(p.slot)}"
+    fun describe(): String {
+        if (!on) return "off"
+        val parts = mutableListOf<String>()
+        if (virtualSlot >= 0)
+            parts += "on-screen = event${200 + virtualSlot}, open by ${PadBridge.readers(virtualSlot)}"
+        for ((id, p) in pads)
+            parts += "${InputDevice.getDevice(id)?.name ?: id} = event${200 + p.slot}, open by ${PadBridge.readers(p.slot)}"
+        return if (parts.isEmpty()) "on, none connected" else parts.joinToString("; ")
+    }
+
+    fun needsOnScreenPad(): Boolean =
+        AppSettings.controlMode == OnScreenControlMode.Gamepad ||
+            AppSettings.controlMode == OnScreenControlMode.Custom
+
+    /**
+     * Opens a pad node for on-screen controls if not already open.
+     * Prefer a free slot (usually 0 → event200) so Steam finds it at scan time.
+     */
+    fun ensureVirtualPad(log: (String) -> Unit = {}): Boolean {
+        if (!on) return false
+        if (virtualSlot >= 0) return true
+        val used = pads.values.map { it.slot }.toSet()
+        val slot = (0 until MAX_PADS).firstOrNull { it !in used } ?: run {
+            log("On-screen pad: no free slot")
+            return false
         }
+        if (!PadBridge.open(slot)) {
+            log("On-screen pad: open($slot) failed")
+            return false
+        }
+        virtualSlot = slot
+        log("On-screen pad -> /dev/input/event${200 + slot}")
+        return true
+    }
 
     private fun attach(id: Int): Pair<Int, String>? {
         if (!on || id in pads) return null
         val d = InputDevice.getDevice(id)
         if (!isGamepad(d)) return null
-        val used = pads.values.map { it.slot }.toSet()
+        val used = pads.values.map { it.slot }.toSet() + listOfNotNull(virtualSlot.takeIf { it >= 0 })
         val slot = (0 until MAX_PADS).firstOrNull { it !in used } ?: return null
         if (!PadBridge.open(slot)) return null
         pads[id] = Pad(slot, d!!)
@@ -154,13 +197,12 @@ object Gamepads {
                 pad.dpadX = if (!down) 0 else if (e.keyCode == KeyEvent.KEYCODE_DPAD_LEFT) -1 else 1
                 n = put(n, pad, EV_ABS, ABS_HAT0X, pad.dpadX)
             }
-            // Digital triggers (pads without analog ones).
             KeyEvent.KEYCODE_BUTTON_L2 -> if (MotionEvent.AXIS_LTRIGGER !in pad.ranges && MotionEvent.AXIS_BRAKE !in pad.ranges)
                 n = put(n, pad, EV_ABS, ABS_Z, if (down) 255 else 0)
             KeyEvent.KEYCODE_BUTTON_R2 -> if (MotionEvent.AXIS_RTRIGGER !in pad.ranges && MotionEvent.AXIS_GAS !in pad.ranges)
                 n = put(n, pad, EV_ABS, ABS_RZ, if (down) 255 else 0)
             else -> {
-                val code = BUTTONS[e.keyCode] ?: return true // Other pad buttons: nothing on an Xbox 360 pad.
+                val code = BUTTONS[e.keyCode] ?: return true
                 events[0] = EV_KEY; events[1] = code; events[2] = if (down) 1 else 0
                 n = 1
             }
@@ -187,7 +229,6 @@ object Gamepads {
         return true
     }
 
-    /** Adds an ABS event when the value changed since the last one sent. */
     private fun put(n: Int, pad: Pad, type: Int, code: Int, value: Int): Int {
         if (type == EV_ABS && pad.last[code] == value) return n
         if (type == EV_ABS) pad.last[code] = value
