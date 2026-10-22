@@ -53,8 +53,12 @@ enum class OnScreenControlMode {
     Keys,
     /** Free-placement virtual Xbox pad ([ControlProfile.defaultGamepad]). */
     Gamepad,
-    /** User-saved [ControlProfile] JSON. */
-    Custom,
+    /**
+     * Free-placement keyboard/mouse buttons + key chords.
+     * Empty areas of the screen act as a trackpad ([XInput.moveBy]).
+     * Saved layout in [AppSettings.customControlProfile] (legacy key name).
+     */
+    MouseKeyboard,
 }
 
 /**
@@ -162,8 +166,11 @@ object AppSettings {
         keysRight = prefs.getString("keys_right", null) ?: OnScreenKeys.DEFAULT_RIGHT
         customControlProfile = prefs.getString("control_profile_custom", null) ?: ""
         // Prefer the new key; fall back to the old boolean so existing installs keep Keys on.
-        controlMode = prefs.getString("control_mode", null)?.let {
-            runCatching { OnScreenControlMode.valueOf(it) }.getOrNull()
+        controlMode = prefs.getString("control_mode", null)?.let { raw ->
+            when (raw) {
+                "Custom" -> OnScreenControlMode.MouseKeyboard // renamed
+                else -> runCatching { OnScreenControlMode.valueOf(raw) }.getOrNull()
+            }
         } ?: if (prefs.getBoolean("on_screen_keys", false)) OnScreenControlMode.Keys else OnScreenControlMode.Off
     }
 
@@ -184,7 +191,7 @@ object AppSettings {
 
     fun updateControlMode(v: OnScreenControlMode) {
         if (v != OnScreenControlMode.Keys) OnScreenKeys.reset()
-        if (v != OnScreenControlMode.Gamepad && v != OnScreenControlMode.Custom) OnScreenControls.reset()
+        if (v != OnScreenControlMode.Gamepad && v != OnScreenControlMode.MouseKeyboard) OnScreenControls.reset()
         controlMode = v
         prefs.edit()
             .putString("control_mode", v.name)
@@ -217,20 +224,30 @@ object AppSettings {
     }
 
     fun resetCustomControlProfile() {
-        val json = ControlProfile.defaultGamepad().toJsonString()
+        val json = when (controlMode) {
+            OnScreenControlMode.Gamepad -> ControlProfile.defaultGamepad().toJsonString()
+            else -> ControlProfile.defaultMouseKeyboard().toJsonString()
+        }
         updateCustomControlProfile(json)
     }
 
     /** Profile to draw for the current mode, or null when Off / Keys (Keys uses OnScreenKeys). */
     fun activeControlProfile(): ControlProfile? = when (controlMode) {
         OnScreenControlMode.Off, OnScreenControlMode.Keys -> null
-        OnScreenControlMode.Gamepad -> ControlProfile.defaultGamepad()
-        OnScreenControlMode.Custom -> {
+        OnScreenControlMode.Gamepad -> {
             val parsed = ControlProfile.fromJsonString(customControlProfile)
             if (parsed != null && parsed.elements.isNotEmpty()) parsed
             else ControlProfile.defaultGamepad()
         }
+        OnScreenControlMode.MouseKeyboard -> {
+            val parsed = ControlProfile.fromJsonString(customControlProfile)
+            if (parsed != null && parsed.elements.isNotEmpty()) parsed
+            else ControlProfile.defaultMouseKeyboard()
+        }
     }
+
+    /** True when empty screen area should move the mouse relatively (trackpad). */
+    val trackpadMode get() = controlMode == OnScreenControlMode.MouseKeyboard
 
     fun updateLanguage(v: Language) { language = v; prefs.edit().putString("language", v.name).apply() }
     fun updateFps(v: Int) { fps = v; prefs.edit().putInt("fps", v).apply() }
