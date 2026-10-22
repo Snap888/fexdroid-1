@@ -1,1 +1,26 @@
-SEE_FILE
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="advanced_game_running">A game is running</string>
+    <string name="cancel">Cancel</string>
+    <string name="close">Close</string>
+    <string name="nav_home">Home</string>
+    <string name="nav_settings">Settings</string>
+    <string name="nav_advanced">Advanced</string>
+    <string name="settings_title">Settings</string>
+    <string name="settings_controls">Playing by touch</string>
+    <string name="settings_control_mode">On-screen controls</string>
+    <string name="settings_control_mode_about">How you play by touch. Gamepad needs Gamepads above switched on so the virtual stick reaches Steam.</string>
+    <string name="settings_control_off">Off</string>
+    <string name="settings_control_keys">Keys</string>
+    <string name="settings_control_gamepad">Gamepad</string>
+    <string name="settings_control_custom">Custom</string>
+    <string name="settings_control_custom_about">Your saved layout. Open the editor to move and configure controls.</string>
+    <string name="settings_control_custom_reset">Reset custom to default gamepad</string>
+    <string name="player_controls_hide">Hide on-screen controls</string>
+    <string name="player_controls_show">On-screen controls</string>
+    <string name="player_controls_hint">Keys, virtual gamepad, or your layout</string>
+    <string name="home_start_steam">Start Steam</string>
+    <string name="home_tagline">Linux PC games, running on the phone itself</string>
+    <string name="stop">Stop</string>
+    <string name="try_again">Try again</string>
+</resources>
