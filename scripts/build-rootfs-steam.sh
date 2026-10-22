@@ -12,8 +12,6 @@ mkdir -p "$OUT"
 APT_SNAPSHOT=""
 [[ -n "${SNAPSHOT:-}" ]] && APT_SNAPSHOT="--snapshot $SNAPSHOT"
 
-# steam-libs(-i386): Debian's list of what the Steam client needs (contrib/non-free).
-# Plus the recommends that matter without a desktop: fonts, SDL, glib, xkbcommon, dbus.
 PKGS=(
   libc6 libstdc++6 coreutils bash ca-certificates curl xz-utils file tar
   steam-libs steam-libs-i386
@@ -26,7 +24,7 @@ PKGS=(
   libvulkan1 libvulkan1:i386 vulkan-tools libusb-1.0-0 lsof procps
   libibus-1.0-5 libxtst6 libxtst6:i386 libvdpau1
 
-  # === OpenGL / GLVND (нужно для Qt OpenGL и shadPS4QtLauncher) ===
+  # === OpenGL / GLVND ===
   libopengl0
   libgl1
   libglx0
@@ -66,10 +64,10 @@ PKGS=(
   qt6-qpa-plugins
 
   # === AppImage support ===
-  squashfs-tools          # unsquashfs / mksquashfs
-  fuse3                   # современный FUSE
-  libfuse3-3
-  libfuse2t64             # многие старые AppImage требуют libfuse2
+  squashfs-tools
+  fuse3
+  libfuse3-4
+  libfuse2t64
 )
 
 cname="fexdroid-steamfs-$$"
@@ -91,15 +89,12 @@ docker rm "$cname" >/dev/null
   rm -rf usr/share/doc/* usr/share/man/* usr/share/info/* usr/share/lintian var/log/* .dockerenv
   find usr/share/locale -mindepth 1 -maxdepth 1 ! -name 'locale.alias' -exec rm -rf {} + 2>/dev/null || true
 )
-# Chromium (steamwebhelper) needs a working /dev/shm; on the phone it is this directory.
 mkdir -p "$OUT/steam-stage/dev/shm" "$OUT/steam-stage/run/pressure-vessel"
-# No empty /proc or /sys: FEX would open those instead of the real ones (NOTES.md N-028).
 rm -rf "$OUT/steam-stage/proc" "$OUT/steam-stage/sys"
 chmod 1777 "$OUT/steam-stage/tmp" "$OUT/steam-stage/var/tmp" "$OUT/steam-stage/dev/shm"
 mv "$OUT/steam-stage/packages.txt" "$OUT/rootfs-x86_64-steam.packages.txt"
 python3 scripts/lib/relativize-symlinks.py "$OUT/steam-stage"
 mkdir -p "$OUT/steam-stage/opt/fexdroid-tests"
-# --hard-dereference: Android apps cannot create hard links (SELinux), toybox tar stops at one.
 tar -C "$OUT/steam-stage" --numeric-owner --owner=0 --group=0 --sort=name --hard-dereference -cf - . | zstd -T0 -19 -q -o "$OUT/rootfs-x86_64-steam.tar.zst" -f
 rm -rf "$OUT/steam-stage"
 du -h "$OUT/rootfs-x86_64-steam.tar.zst"
