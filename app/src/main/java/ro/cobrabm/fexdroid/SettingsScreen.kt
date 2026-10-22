@@ -50,6 +50,24 @@ import androidx.compose.ui.unit.sp
 fun SettingsScreen() {
     val ctx = LocalContext.current
     val env = remember { LinuxEnv(ctx) }
+    var editingControls by remember { mutableStateOf(false) }
+    if (editingControls) {
+        val initial = remember {
+            AppSettings.activeControlProfile()
+                ?: ControlProfile.fromJsonString(AppSettings.customControlProfile)
+                ?: ControlProfile.defaultGamepad()
+        }
+        ControlEditorScreen(
+            initial = initial,
+            onSave = { profile ->
+                AppSettings.updateCustomControlProfile(profile.toJsonString())
+                AppSettings.updateControlMode(OnScreenControlMode.Custom)
+                editingControls = false
+            },
+            onCancel = { editingControls = false },
+        )
+        return
+    }
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
         Column(
             Modifier.widthIn(max = 680.dp).fillMaxWidth().verticalScroll(rememberScrollState()).padding(16.dp),
@@ -163,9 +181,15 @@ fun SettingsScreen() {
                     }
                     OnScreenControlMode.Gamepad -> {
                         Note(str(R.string.settings_gamepads_about))
+                        TextButton(onClick = { editingControls = true }) {
+                            Text(str(R.string.editor_open))
+                        }
                     }
                     OnScreenControlMode.Custom -> {
                         Note(str(R.string.settings_control_custom_about))
+                        TextButton(onClick = { editingControls = true }) {
+                            Text(str(R.string.editor_open))
+                        }
                         TextButton(onClick = { AppSettings.resetCustomControlProfile() }) {
                             Text(str(R.string.settings_control_custom_reset))
                         }
