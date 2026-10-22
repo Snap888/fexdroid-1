@@ -20,6 +20,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -47,7 +48,7 @@ import kotlin.math.sin
  * Free-placement on-screen controls (buttons, analog sticks, D-pads).
  *
  * Sticks, D-pads and pad buttons talk to the guest through [PadBridge] on
- * [VIRTUAL_SLOT] (Xbox 360 layout). Keys and mouse buttons still go through [XInput].
+ * [Gamepads.onScreenSlot] (Xbox 360 layout, node opened early for Steam). Keys and mouse buttons still go through [XInput].
  *
  * Touch ownership mirrors [OnScreenKeys]: [filter] peels fingers on controls out of the
  * window event so [InputSurfaceView] only sees the rest.
@@ -56,8 +57,11 @@ import kotlin.math.sin
  * [filter] in [MainActivity.dispatchTouchEvent] (after or instead of OnScreenKeys).
  */
 object OnScreenControls {
-    /** Reserved pad slot so physical controllers keep 0..2 (Gamepads finds the first free). */
-    const val VIRTUAL_SLOT = 3
+    private const val TRACK_ID = "__trackpad__"
+    private const val TRACK_SENS = 1.35f
+
+    /** Slot is owned by [Gamepads.onScreenSlot] (opened early at session start). */
+    private val padSlot: Int get() = Gamepads.onScreenSlot
 
     private const val EV_KEY = 1
     private const val EV_ABS = 3
@@ -99,7 +103,13 @@ object OnScreenControls {
     private data class StickLive(var nx: Float = 0f, var ny: Float = 0f, var pointerId: Int = -1)
     private data class DPadLive(var dx: Int = 0, var dy: Int = 0, var pointerId: Int = -1)
     private val stickLive = HashMap<String, StickLive>()
+    /** Observable stick deflection for Compose (nx, ny in −1..1). */
+    private val stickPos = mutableStateMapOf<String, Offset>()
     private val dpadLive = HashMap<String, DPadLive>()
+
+    /** Fingers on empty space in MouseKeyboard mode → relative mouse (trackpad). */
+    private data class TrackLive(var lastX: Float, var lastY: Float, var moved: Boolean = false)
+    private val trackLive = HashMap<Int, TrackLive>()
 
     fun loadProfile(p: ControlProfile?) {
         reset()
@@ -115,23 +125,29 @@ object OnScreenControls {
     }
 
     private fun ensurePad() {
-        if (padOpen) return
-        if (PadBridge.open(VIRTUAL_SLOT)) {
-            padOpen = true
-        }
+        // Prefer the slot reserved at Gamepads.start (usually 0). Fall back to opening one now.
+        var slot = padSlot
+        if (slot < 0) slot = Gamepads.ensureVirtualPad()
+        if (slot < 0) return
+        // open() is idempotent when the node already exists.
+        if (!PadBridge.open(slot)) return
+        padOpen = true
     }
 
     private fun closePad() {
         if (!padOpen) return
+        // Zero axes only — keep the node alive so Steam does not lose the controller.
         zeroAllPadAxes()
-        PadBridge.close(VIRTUAL_SLOT)
         padOpen = false
     }
 
     private fun sendPad(count: Int) {
         if (count <= 0) return
         ensurePad()
-        if (padOpen) PadBridge.send(VIRTUAL_SLOT, events, count)
+        val slot = padSlot
+        if (!padOpen || slot < 0) return
+        PadBridge.send(slot, events, count)
+        android.util.Log.d("fexdroid-osc", "send slot=$slot n=$count readers=${PadBridge.readers(slot)}")
     }
 
     private fun put(n: Int, type: Int, code: Int, value: Int): Int {
@@ -154,6 +170,8 @@ object OnScreenControls {
         sendPad(n)
     }
 
+    // —— actions ——
+
     private fun actionDown(action: ControlAction) {
         when (action) {
             is ControlAction.Key -> {
@@ -163,7 +181,11 @@ object OnScreenControls {
                 } else XInput.key(action.xKeycode, true)
             }
             is ControlAction.MouseButton -> XInput.button(action.button, true)
+            is ControlAction.KeyCombo -> {
+                for (k in action.xKeycodes) XInput.key(k, true)
+            }
             is ControlAction.PadButton -> {
+                android.util.Log.d("fexdroid-osc", "PadButton down code=0x${action.code.toString(16)}")
                 sendPad(put(0, EV_KEY, action.code, 1))
             }
             is ControlAction.PadAxis -> {
@@ -179,6 +201,9 @@ object OnScreenControls {
         when (action) {
             is ControlAction.Key -> if (!action.sticky) XInput.key(action.xKeycode, false)
             is ControlAction.MouseButton -> XInput.button(action.button, false)
+            is ControlAction.KeyCombo -> {
+                for (k in action.xKeycodes.asReversed()) XInput.key(k, false)
+            }
             is ControlAction.PadButton -> sendPad(put(0, EV_KEY, action.code, 0))
             is ControlAction.PadAxis -> sendPad(put(0, EV_ABS, action.code, 0))
             else -> {}
@@ -188,6 +213,8 @@ object OnScreenControls {
     private var onMenu: (() -> Unit)? = null
 
     fun setMenuHandler(handler: (() -> Unit)?) { onMenu = handler }
+
+    // —— sticks ——
 
     private fun stickDown(el: ControlElement.Stick, pointerId: Int, wx: Float, wy: Float, area: RectF) {
         val live = stickLive.getOrPut(el.id) { StickLive() }
@@ -212,6 +239,7 @@ object OnScreenControls {
                 val nx = if (active) (dx * el.sensitivity).coerceIn(-1f, 1f) else 0f
                 val ny = if (active) (dy * el.sensitivity).coerceIn(-1f, 1f) else 0f
                 live.nx = nx; live.ny = ny
+                stickPos[el.id] = Offset(nx, ny)
                 val ax = (nx * 32767f).roundToInt().coerceIn(-32768, 32767)
                 val ay = (ny * 32767f).roundToInt().coerceIn(-32768, 32767)
                 var n = 0
@@ -232,6 +260,7 @@ object OnScreenControls {
         live.nx = 0f; live.ny = 0f
         when (el.mode) {
             StickMode.Analog -> {
+                stickPos[el.id] = Offset.Zero
                 var n = 0
                 n = put(n, EV_ABS, el.axisX, 0)
                 n = put(n, EV_ABS, el.axisY, 0)
@@ -244,7 +273,9 @@ object OnScreenControls {
     private fun applyDigitalStick(el: ControlElement.Stick, live: StickLive, dx: Int, dy: Int) {
         val prevX = live.nx.roundToInt().coerceIn(-1, 1)
         val prevY = live.ny.roundToInt().coerceIn(-1, 1)
+        // Reuse nx/ny as discrete -1/0/1 for drawing.
         live.nx = dx.toFloat(); live.ny = dy.toFloat()
+        stickPos[el.id] = Offset(live.nx, live.ny)
         if (dx != prevX) {
             if (prevX < 0) actionUp(el.left) else if (prevX > 0) actionUp(el.right)
             if (dx < 0) actionDown(el.left) else if (dx > 0) actionDown(el.right)
@@ -253,11 +284,14 @@ object OnScreenControls {
             if (prevY < 0) actionUp(el.up) else if (prevY > 0) actionUp(el.down)
             if (dy < 0) actionDown(el.up) else if (dy > 0) actionDown(el.down)
         }
+        // Also drive the pad axes so games that only read sticks still work.
         var n = 0
         n = put(n, EV_ABS, el.axisX, dx * 32767)
         n = put(n, EV_ABS, el.axisY, dy * 32767)
         sendPad(n)
     }
+
+    // —— d-pad ——
 
     private fun dpadDown(el: ControlElement.DPad, pointerId: Int, wx: Float, wy: Float, area: RectF) {
         val live = dpadLive.getOrPut(el.id) { DPadLive() }
@@ -304,6 +338,7 @@ object OnScreenControls {
         }
     }
 
+    /** Map a unit vector to (-1/0/1, -1/0/1). */
     private fun digitalDir(dx: Float, dy: Float, len: Float, deadzone: Float, eight: Boolean): Pair<Int, Int> {
         if (len < deadzone) return 0 to 0
         if (!eight) {
@@ -312,7 +347,10 @@ object OnScreenControls {
             else
                 0 to (if (dy < 0) -1 else 1)
         }
-        val angle = atan2(dy, dx)
+        // 8-way: 45° sectors.
+        val angle = atan2(dy, dx) // -PI..PI, 0 = right
+        val sector = ((angle + Math.PI) / (Math.PI / 4)).toInt().coerceIn(0, 7)
+        // sector 0 = left, then counter-clockwise… easier via rounded components:
         val ix = when {
             dx > 0.38f -> 1
             dx < -0.38f -> -1
@@ -324,10 +362,13 @@ object OnScreenControls {
             else -> 0
         }
         return if (ix == 0 && iy == 0) {
+            // Fallback to dominant axis near the deadzone edge.
             if (kotlin.math.abs(dx) >= kotlin.math.abs(dy)) (if (dx < 0) -1 else 1) to 0
             else 0 to (if (dy < 0) -1 else 1)
         } else ix to iy
     }
+
+    // —— buttons ——
 
     private fun buttonDown(el: ControlElement.Button) {
         if (el.id !in pressedButtons) pressedButtons += el.id
@@ -336,6 +377,7 @@ object OnScreenControls {
             return
         }
         if (el.toggle) {
+            // Toggle actions fire only on down (sticky key / mode switch).
             actionDown(el.action)
         } else {
             actionDown(el.action)
@@ -352,7 +394,16 @@ object OnScreenControls {
 
     private fun lift(finger: Int) {
         val id = fingers.remove(finger) ?: return
-        if (id in fingers.values) return
+        if (id == TRACK_ID) {
+            val live = trackLive.remove(finger)
+            // Short tap without movement → left click (trackpad).
+            if (live != null && !live.moved) {
+                XInput.button(1, true)
+                XInput.button(1, false)
+            }
+            return
+        }
+        if (id in fingers.values) return // another finger still on the same control
         when (val el = elementById(id)) {
             is ControlElement.Button -> buttonUp(el)
             is ControlElement.Stick -> stickUp(el)
@@ -361,6 +412,10 @@ object OnScreenControls {
         }
     }
 
+    /**
+     * Same contract as [OnScreenKeys.filter]: returns the event for the picture, a synthetic
+     * one, or null when every finger was on a control.
+     */
     fun filter(e: MotionEvent): MotionEvent? {
         if (!active && fingers.isEmpty()) return e
         if (!e.isFromSource(InputDevice.SOURCE_TOUCHSCREEN)) return e
@@ -372,6 +427,7 @@ object OnScreenControls {
             MotionEvent.ACTION_DOWN, MotionEvent.ACTION_POINTER_DOWN -> {
                 if (action == MotionEvent.ACTION_DOWN) for (f in fingers.keys.toList()) lift(f)
                 if (InputSurfaceView.overlayOpen) {
+                    // Menus own the touch stream.
                 } else {
                     val x = e.getX(index)
                     val y = e.getY(index)
@@ -389,6 +445,11 @@ object OnScreenControls {
                                 is ControlElement.DPad -> dpadDown(el, finger, x, y, hit.value.area)
                             }
                         }
+                    } else if (AppSettings.trackpadMode) {
+                        // Empty area → trackpad (relative mouse).
+                        mine = true
+                        fingers[finger] = TRACK_ID
+                        trackLive[finger] = TrackLive(x, y)
                     }
                 }
             }
@@ -396,9 +457,20 @@ object OnScreenControls {
                 for (i in 0 until e.pointerCount) {
                     val pid = e.getPointerId(i)
                     val id = fingers[pid] ?: continue
+                    val x = e.getX(i); val y = e.getY(i)
+                    if (id == TRACK_ID) {
+                        val live = trackLive[pid] ?: continue
+                        val dx = ((x - live.lastX) * TRACK_SENS).toInt()
+                        val dy = ((y - live.lastY) * TRACK_SENS).toInt()
+                        if (dx != 0 || dy != 0) {
+                            XInput.moveBy(dx, dy)
+                            live.moved = true
+                            live.lastX = x; live.lastY = y
+                        }
+                        continue
+                    }
                     val el = elementById(id) ?: continue
                     val spot = spots[id] ?: continue
-                    val x = e.getX(i); val y = e.getY(i)
                     when (el) {
                         is ControlElement.Stick -> stickMove(el, x, y, spot.area)
                         is ControlElement.DPad -> dpadMove(el, x, y, spot.area)
@@ -445,51 +517,69 @@ object OnScreenControls {
         tapSecond = false
         swipeDrags = false
         stickLive.clear()
+        stickPos.clear()
         dpadLive.clear()
+        trackLive.clear()
+        zeroAllPadAxes()
         closePad()
     }
 
+    // —— Compose UI ——
+
+    /**
+     * Draws every visible element of [profile] over the player.
+     * Positions are normalised (0..1); size comes from type × [ControlElement.scale].
+     */
     @Composable
-    fun Overlay(profile: ControlProfile, onMenu: () -> Unit = {}) {
-        val view = LocalView.current
+    fun Overlay(
+        profile: ControlProfile,
+        modifier: Modifier = Modifier,
+        onMenu: () -> Unit = {},
+    ) {
+        DisposableEffect(onMenu) {
+            setMenuHandler(onMenu)
+            onDispose { setMenuHandler(null) }
+        }
         DisposableEffect(profile) {
             loadProfile(profile)
-            setMenuHandler(onMenu)
-            onDispose {
-                if (OnScreenControls.profile === profile) loadProfile(null)
-                setMenuHandler(null)
-            }
+            onDispose { if (OnScreenControls.profile === profile) loadProfile(null) }
         }
-        BoxWithConstraints(Modifier.fillMaxSize()) {
+        BoxWithConstraints(modifier.fillMaxSize()) {
             val w = constraints.maxWidth.toFloat().coerceAtLeast(1f)
             val h = constraints.maxHeight.toFloat().coerceAtLeast(1f)
-            val density = LocalDensity.current.density
+            val density = LocalDensity.current
             for (el in profile.elements) {
                 if (!el.visible) continue
                 when (el) {
-                    is ControlElement.Button -> ControlButton(el, w, h, density, view)
-                    is ControlElement.Stick -> ControlStick(el, w, h, density)
-                    is ControlElement.DPad -> ControlDPad(el, w, h, density)
+                    is ControlElement.Button -> ButtonView(el, w, h, density.density)
+                    is ControlElement.Stick -> StickView(el, w, h, density.density)
+                    is ControlElement.DPad -> DPadView(el, w, h, density.density)
                 }
             }
         }
     }
 
     @Composable
-    private fun ControlButton(
-        el: ControlElement.Button,
-        winW: Float,
-        winH: Float,
-        density: Float,
-        view: android.view.View,
-    ) {
+    private fun ButtonView(el: ControlElement.Button, winW: Float, winH: Float, density: Float) {
         val sizeDp = (BASE_BUTTON_DP * el.scale).dp
         val sizePx = BASE_BUTTON_DP * el.scale * density
+        val view = LocalView.current
         val pressed = el.id in pressedButtons
-        val shape = CircleShape
+        val lit = when (val a = el.action) {
+            is ControlAction.Key -> a.sticky && a.xKeycode in heldKeys
+            ControlAction.ToggleTapButton -> tapSecond
+            ControlAction.ToggleSwipeMode -> swipeDrags
+            else -> false
+        }
+        val spot = remember(el.id) { Spot(kind = Kind.Button, elementId = el.id) }
+        DisposableEffect(el.id) {
+            spots[el.id] = spot
+            onDispose { if (spots[el.id] === spot) spots.remove(el.id) }
+        }
         val fill = when {
-            pressed -> Color.White.copy(alpha = 0.40f * el.opacity)
-            else -> Color.White.copy(alpha = 0.12f * el.opacity)
+            pressed -> Color.White.copy(alpha = 0.45f)
+            lit -> MaterialTheme.colorScheme.primary.copy(alpha = 0.55f)
+            else -> Color.White.copy(alpha = el.opacity * 0.35f)
         }
         Box(
             Modifier
@@ -500,38 +590,46 @@ object OnScreenControls {
                     )
                 }
                 .size(sizeDp)
-                .background(fill, shape)
-                .border(1.dp, Color.White.copy(alpha = 0.30f * el.opacity), shape)
+                .background(fill, CircleShape)
+                .border(1.dp, Color.White.copy(alpha = 0.35f), CircleShape)
                 .onGloballyPositioned { c ->
                     val b = c.boundsInWindow()
-                    spots.getOrPut(el.id) { Spot(elementId = el.id, kind = Kind.Button) }.area =
-                        RectF(b.left, b.top, b.right, b.bottom)
+                    spot.area = RectF(b.left, b.top, b.right, b.bottom)
                 },
             contentAlignment = Alignment.Center,
         ) {
-            if (el.action is ControlAction.Menu) {
-                Icon(AppIcons.Menu, str(R.string.player_menu), tint = Color.White.copy(alpha = 0.85f * el.opacity))
-            } else {
-                Text(
-                    el.label.ifEmpty { "•" },
-                    color = Color.White.copy(alpha = 0.9f * el.opacity),
+            when {
+                el.action is ControlAction.Menu || el.label.isEmpty() && el.action is ControlAction.Menu ->
+                    Icon(AppIcons.Menu, null, tint = Color.White.copy(alpha = 0.9f))
+                el.action is ControlAction.Menu ->
+                    Icon(AppIcons.Menu, null, tint = Color.White.copy(alpha = 0.9f))
+                el.label.isNotEmpty() -> Text(
+                    el.label,
+                    color = Color.White.copy(alpha = 0.92f),
                     fontSize = if (el.label.length > 2) 11.sp else 15.sp,
                     fontWeight = FontWeight.Medium,
-                    maxLines = 1,
                     textAlign = TextAlign.Center,
+                    maxLines = 1,
                 )
             }
         }
-        DisposableEffect(el.id) {
-            onDispose { spots.remove(el.id) }
-        }
+        // Haptic is triggered from buttonDown; LocalView kept for future use.
+        DisposableEffect(view) { onDispose { } }
     }
 
     @Composable
-    private fun ControlStick(el: ControlElement.Stick, winW: Float, winH: Float, density: Float) {
+    private fun StickView(el: ControlElement.Stick, winW: Float, winH: Float, density: Float) {
         val sizeDp = (BASE_STICK_DP * el.scale).dp
         val sizePx = BASE_STICK_DP * el.scale * density
-        val live = stickLive[el.id]
+        // stickPos is observable → Canvas recomposes when the stick moves.
+        val pos = stickPos[el.id] ?: Offset.Zero
+        val active = pos.getDistance() > 0.01f
+        val knobN = 0.42f
+        val spot = remember(el.id) { Spot(kind = Kind.Stick, elementId = el.id) }
+        DisposableEffect(el.id) {
+            spots[el.id] = spot
+            onDispose { if (spots[el.id] === spot) spots.remove(el.id) }
+        }
         Box(
             Modifier
                 .offset {
@@ -543,35 +641,66 @@ object OnScreenControls {
                 .size(sizeDp)
                 .onGloballyPositioned { c ->
                     val b = c.boundsInWindow()
-                    spots.getOrPut(el.id) { Spot(elementId = el.id, kind = Kind.Stick) }.area =
-                        RectF(b.left, b.top, b.right, b.bottom)
+                    spot.area = RectF(b.left, b.top, b.right, b.bottom)
                 },
-            contentAlignment = Alignment.Center,
         ) {
             Canvas(Modifier.fillMaxSize()) {
                 val r = size.minDimension / 2f
-                drawCircle(Color.White.copy(alpha = 0.12f * el.opacity), radius = r, style = Stroke(2.dp.toPx()))
-                drawCircle(Color.White.copy(alpha = 0.08f * el.opacity), radius = r * 0.95f)
-                val kn = r * 0.35f
-                val kx = (live?.nx ?: 0f) * (r - kn)
-                val ky = (live?.ny ?: 0f) * (r - kn)
+                val stroke = 2.dp.toPx()
+                val baseA = el.opacity * if (active) 0.28f else 0.18f
+                drawCircle(color = Color.White.copy(alpha = baseA), radius = r)
                 drawCircle(
-                    Color.White.copy(alpha = 0.45f * el.opacity),
-                    radius = kn,
-                    center = Offset(size.width / 2f + kx, size.height / 2f + ky),
+                    color = Color.White.copy(alpha = el.opacity * 0.5f),
+                    radius = r,
+                    style = Stroke(width = stroke),
+                )
+                // Guide ring at deadzone edge
+                val dz = el.deadzone.coerceIn(0f, 0.5f)
+                if (dz > 0.02f) {
+                    drawCircle(
+                        color = Color.White.copy(alpha = el.opacity * 0.15f),
+                        radius = r * (1f - knobN) * dz + r * knobN,
+                        style = Stroke(width = 1.dp.toPx()),
+                    )
+                }
+                val travel = r * (1f - knobN)
+                val kx = center.x + pos.x * travel
+                val ky = center.y + pos.y * travel
+                // Stem from center to knob
+                if (active) {
+                    drawLine(
+                        color = Color.White.copy(alpha = el.opacity * 0.35f),
+                        start = center,
+                        end = Offset(kx, ky),
+                        strokeWidth = 2.dp.toPx(),
+                    )
+                }
+                val knobR = r * knobN
+                drawCircle(
+                    color = Color.White.copy(alpha = if (active) 0.75f else el.opacity * 0.55f),
+                    radius = knobR,
+                    center = Offset(kx, ky),
+                )
+                drawCircle(
+                    color = Color.White.copy(alpha = 0.65f),
+                    radius = knobR,
+                    center = Offset(kx, ky),
+                    style = Stroke(width = stroke),
                 )
             }
-        }
-        DisposableEffect(el.id) {
-            onDispose { spots.remove(el.id) }
         }
     }
 
     @Composable
-    private fun ControlDPad(el: ControlElement.DPad, winW: Float, winH: Float, density: Float) {
+    private fun DPadView(el: ControlElement.DPad, winW: Float, winH: Float, density: Float) {
         val sizeDp = (BASE_DPAD_DP * el.scale).dp
         val sizePx = BASE_DPAD_DP * el.scale * density
         val live = dpadLive[el.id]
+        val spot = remember(el.id) { Spot(kind = Kind.DPad, elementId = el.id) }
+        DisposableEffect(el.id) {
+            spots[el.id] = spot
+            onDispose { if (spots[el.id] === spot) spots.remove(el.id) }
+        }
         Box(
             Modifier
                 .offset {
@@ -583,37 +712,48 @@ object OnScreenControls {
                 .size(sizeDp)
                 .onGloballyPositioned { c ->
                     val b = c.boundsInWindow()
-                    spots.getOrPut(el.id) { Spot(elementId = el.id, kind = Kind.DPad) }.area =
-                        RectF(b.left, b.top, b.right, b.bottom)
+                    spot.area = RectF(b.left, b.top, b.right, b.bottom)
                 },
-            contentAlignment = Alignment.Center,
         ) {
             Canvas(Modifier.fillMaxSize()) {
                 val r = size.minDimension / 2f
-                val arm = r * 0.35f
-                val cx = size.width / 2f
-                val cy = size.height / 2f
-                val base = Color.White.copy(alpha = 0.12f * el.opacity)
-                val lit = Color.White.copy(alpha = 0.40f * el.opacity)
-                // Cross shape via four circles
-                val dirs = listOf(
-                    Offset(0f, -arm) to (live?.dy == -1),
-                    Offset(0f, arm) to (live?.dy == 1),
-                    Offset(-arm, 0f) to (live?.dx == -1),
-                    Offset(arm, 0f) to (live?.dx == 1),
+                val arm = r * 0.38f
+                val gap = r * 0.12f
+                val stroke = 2.dp.toPx()
+                drawCircle(Color.White.copy(alpha = el.opacity * 0.12f), radius = r)
+                drawCircle(Color.White.copy(alpha = el.opacity * 0.4f), radius = r, style = Stroke(stroke))
+                // Four arms; highlight the active direction.
+                fun armColor(active: Boolean) =
+                    if (active) Color.White.copy(alpha = 0.7f) else Color.White.copy(alpha = el.opacity * 0.35f)
+                val dx = live?.dx ?: 0
+                val dy = live?.dy ?: 0
+                // up
+                drawRect(
+                    armColor(dy < 0),
+                    topLeft = Offset(center.x - arm / 2, center.y - r + gap),
+                    size = androidx.compose.ui.geometry.Size(arm, r - gap - arm / 2),
                 )
-                for ((off, on) in dirs) {
-                    drawCircle(
-                        if (on) lit else base,
-                        radius = arm * 0.55f,
-                        center = Offset(cx + off.x, cy + off.y),
-                    )
-                }
-                drawCircle(Color.White.copy(alpha = 0.18f * el.opacity), radius = arm * 0.4f, center = Offset(cx, cy))
+                // down
+                drawRect(
+                    armColor(dy > 0),
+                    topLeft = Offset(center.x - arm / 2, center.y + arm / 2),
+                    size = androidx.compose.ui.geometry.Size(arm, r - gap - arm / 2),
+                )
+                // left
+                drawRect(
+                    armColor(dx < 0),
+                    topLeft = Offset(center.x - r + gap, center.y - arm / 2),
+                    size = androidx.compose.ui.geometry.Size(r - gap - arm / 2, arm),
+                )
+                // right
+                drawRect(
+                    armColor(dx > 0),
+                    topLeft = Offset(center.x + arm / 2, center.y - arm / 2),
+                    size = androidx.compose.ui.geometry.Size(r - gap - arm / 2, arm),
+                )
+                // center hub
+                drawCircle(Color.White.copy(alpha = el.opacity * 0.4f), radius = arm * 0.55f)
             }
-        }
-        DisposableEffect(el.id) {
-            onDispose { spots.remove(el.id) }
         }
     }
 }
