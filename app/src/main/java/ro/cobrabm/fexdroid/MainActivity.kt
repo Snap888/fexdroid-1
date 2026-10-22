@@ -104,10 +104,26 @@ class MainActivity : ComponentActivity() {
         return if (inside) view.mouseEvent(ev, located = false) else handled
     }
 
-    /** Fingers on the on-screen keys are taken out before the window sees the touch. */
+    /**
+     * Fingers on free-placement controls and on the side-strip keys are taken out before the
+     * window sees the touch, so the picture only gets the remaining pointers.
+     */
     override fun dispatchTouchEvent(ev: android.view.MotionEvent): Boolean {
-        val rest = OnScreenKeys.filter(ev) ?: return true
-        return try { super.dispatchTouchEvent(rest) } finally { if (rest !== ev) rest.recycle() }
+        val afterControls = OnScreenControls.filter(ev) ?: return true
+        val rest = try {
+            OnScreenKeys.filter(afterControls) ?: return true.also {
+                if (afterControls !== ev) afterControls.recycle()
+            }
+        } catch (t: Throwable) {
+            if (afterControls !== ev) afterControls.recycle()
+            throw t
+        }
+        return try {
+            super.dispatchTouchEvent(rest)
+        } finally {
+            if (rest !== afterControls && rest !== ev) rest.recycle()
+            if (afterControls !== ev) afterControls.recycle()
+        }
     }
 
     /** True when [action] is one that starts a game session (and starts it, unless one runs). */
