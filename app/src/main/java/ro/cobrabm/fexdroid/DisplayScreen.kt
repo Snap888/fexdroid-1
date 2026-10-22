@@ -60,7 +60,7 @@ fun DisplayScreen(autoAction: String?) {
     
     fun append(line: String) {
         Log.i("fexdroid-display", line)
-        log = (log + line + "\n").takeLast(8000)
+        log = (log + line + "\n").takeLast(10000)
     }
     
     val session = remember {
@@ -71,6 +71,10 @@ fun DisplayScreen(autoAction: String?) {
     var holder by remember { mutableStateOf<SurfaceHolder?>(null) }
     var view by remember { mutableStateOf<InputSurfaceView?>(null) }
     var frames by remember { mutableStateOf(0L) }
+
+    // ===== Состояние сворачивания лога =====
+    var logExpanded by remember { mutableStateOf(false) }
+    val logScrollState = rememberScrollState()
 
     // =========================================================================
     // 1. ФУНКЦИИ (строго сверху вниз)
@@ -108,8 +112,8 @@ fun DisplayScreen(autoAction: String?) {
     var customExeArgs by remember { mutableStateOf("") }
     var customEnvVars by remember { mutableStateOf("") }
     var isAppImageMode by remember { mutableStateOf(false) }
-    var extractDir by remember { mutableStateOf("") }  // Директория распаковки
-    var extractedFiles by remember { mutableStateOf<List<String>>(emptyList()) }  // Файлы после распаковки
+    var extractDir by remember { mutableStateOf("") }
+    var extractedFiles by remember { mutableStateOf<List<String>>(emptyList()) }
     var isExtracting by remember { mutableStateOf(false) }
     
     var availableBinaries by remember { mutableStateOf<List<String>>(emptyList()) }
@@ -130,12 +134,10 @@ fun DisplayScreen(autoAction: String?) {
                     isScanning = false
                     return@thread
                 }
-                
                 val files = dir.listFiles()?.filter { it.isFile }
                     ?.map { it.name }?.sorted() ?: emptyList()
-                
                 availableBinaries = files.take(500)
-                append(" Найдено файлов в $dirPath: ${files.size}")
+                append("📂 Найдено файлов в $dirPath: ${files.size}")
                 if (files.isNotEmpty()) {
                     append("   Примеры: ${files.take(5).joinToString(", ")}")
                 }
@@ -156,63 +158,41 @@ fun DisplayScreen(autoAction: String?) {
         }
     }
 
-    /**
-     * Распаковывает AppImage в указанную директорию
-     */
     fun extractAppImage(appImagePath: String, targetDir: String) {
         if (!File(appImagePath).exists()) {
             append("❌ AppImage не найден: $appImagePath")
             return
         }
-
         isExtracting = true
+        logExpanded = true  // Автоматически раскрываем лог при распаковке
         thread(name = "extract-appimage") {
             try {
-                // Создаём целевую директорию
                 val target = File(targetDir)
                 if (!target.exists()) {
                     target.mkdirs()
-                    append("📁 Создана директория распаковки: $targetDir")
+                    append("📁 Создана директория: $targetDir")
                 }
-
-                // Проверяем, что директория writable
                 if (!target.canWrite()) {
-                    append("❌ Директория не доступна для записи: $targetDir")
+                    append("❌ Директория недоступна для записи: $targetDir")
                     isExtracting = false
                     return@thread
                 }
-
-                // Распаковываем AppImage
-                // AppImage поддерживает переменную ARCHIVE для указания целевой директории
-                val extractCmd = "ARCHIVE=$targetDir '$appImagePath' --appimage-extract"
+                val extractCmd = "ARCHIVE='$targetDir' '$appImagePath' --appimage-extract"
                 append("📦 Распаковка: $extractCmd")
-                
-                session.launch(
-                    "extract-appimage",
-                    listOf("${env.root}/bin/sh", "-c", extractCmd)
-                )
-
-                // Ждём завершения распаковки (AppImage обычно быстро распаковывается)
+                session.launch("extract-appimage", listOf("${env.root}/bin/sh", "-c", extractCmd))
                 Thread.sleep(5000)
-
-                // Сканируем распакованную директорию
                 val squashfsRoot = File(target, "squashfs-root")
                 if (squashfsRoot.exists()) {
                     val files = squashfsRoot.listFiles()?.map { it.name }?.sorted() ?: emptyList()
                     extractedFiles = files
-                    append("✅ Распаковка завершена! Найдено файлов: ${files.size}")
-                    append("📂 Содержимое squashfs-root: ${files.take(10).joinToString(", ")}")
-                    
-                    // Ищем основной исполняемый файл (AppRun или .desktop)
+                    append("✅ Распаковка завершена! Файлов: ${files.size}")
+                    append("📂 squashfs-root: ${files.take(10).joinToString(", ")}")
                     val appRun = files.find { it == "AppRun" }
                     val desktopFile = files.find { it.endsWith(".desktop") }
-                    if (appRun != null) {
-                        append("🎯 Найден AppRun: squashfs-root/AppRun")
-                    } else if (desktopFile != null) {
-                        append("🎯 Найден .desktop файл: squashfs-root/$desktopFile")
-                    }
+                    if (appRun != null) append(" Найден AppRun: squashfs-root/AppRun")
+                    else if (desktopFile != null) append("🎯 Найден .desktop: squashfs-root/$desktopFile")
                 } else {
-                    append("⚠️ Директория squashfs-root не найдена после распаковки")
+                    append("⚠️ squashfs-root не найден после распаковки")
                 }
             } catch (e: Exception) {
                 append("❌ Ошибка распаковки: ${e.message}")
@@ -227,22 +207,15 @@ fun DisplayScreen(autoAction: String?) {
             append("⚠️ Ошибка: не выбран файл для запуска.")
             return
         }
-
         val fullPath = File(dirPath, fileName).absolutePath
-        
         thread(name = "custom-x86-app") {
             startX().join()
-            if (!session.startAudio()) {
-                append("️ Не удалось запустить аудио.")
-            }
-
+            if (!session.startAudio()) append("⚠️ Не удалось запустить аудио.")
             val file = File(fullPath)
             if (!file.exists()) {
-                append("❌ Файл не найден по пути: $fullPath")
+                append("❌ Файл не найден: $fullPath")
                 return@thread
             }
-
-            // Делаем файл исполняемым
             try {
                 val chmodProcess = Runtime.getRuntime().exec(arrayOf("chmod", "+x", fullPath))
                 chmodProcess.waitFor()
@@ -250,11 +223,8 @@ fun DisplayScreen(autoAction: String?) {
             } catch (e: Exception) {
                 append("⚠️ chmod failed: ${e.message}")
             }
-
-            // Обработка AppImage режима
             val finalArgs = mutableListOf<String>()
             val envVars = parseEnvVars(customEnvVars).toMutableList()
-            
             if (isAppImageMode) {
                 append("🔧 AppImage режим")
                 val appImageTempDir = File(dirPath, ".appimage_temp")
@@ -266,65 +236,42 @@ fun DisplayScreen(autoAction: String?) {
                     finalArgs.add("--appimage-extract-and-run")
                 }
             }
-            
             finalArgs.addAll(customExeArgs.split(" ").filter { it.isNotBlank() })
-
             val cmd = mutableListOf("${env.root}/usr/bin/FEX", fullPath).apply { addAll(finalArgs) }
             val envPrefix = envVars.joinToString(" ") { "${it.first}=${it.second}" }
-            val fullCmdStr = if (envPrefix.isNotBlank()) {
-                "$envPrefix ${cmd.joinToString(" ")}"
-            } else {
-                cmd.joinToString(" ")
-            }
-
+            val fullCmdStr = if (envPrefix.isNotBlank()) "$envPrefix ${cmd.joinToString(" ")}" else cmd.joinToString(" ")
             append("🚀 Запуск: $fullCmdStr")
             session.launch("custom-x86-$fileName", listOf("${env.root}/bin/sh", "-c", fullCmdStr))
         }
     }
 
-    /**
-     * Запускает распакованный файл из squashfs-root
-     */
     fun launchExtractedApp(extractedFileName: String) {
         if (extractDir.isBlank()) {
             append("❌ Не указана директория распаковки")
             return
         }
-
         val squashfsRoot = File(extractDir, "squashfs-root")
         val fullPath = File(squashfsRoot, extractedFileName).absolutePath
-        
         thread(name = "launch-extracted") {
             startX().join()
-            if (!session.startAudio()) {
-                append("⚠️ Не удалось запустить аудио.")
-            }
-
+            if (!session.startAudio()) append("⚠️ Не удалось запустить аудио.")
             val file = File(fullPath)
             if (!file.exists()) {
                 append("❌ Файл не найден: $fullPath")
                 return@thread
             }
-
-            // Делаем исполняемым
             try {
                 val chmodProcess = Runtime.getRuntime().exec(arrayOf("chmod", "+x", fullPath))
                 chmodProcess.waitFor()
             } catch (e: Exception) {
                 append("⚠️ chmod failed: ${e.message}")
             }
-
             val args = customExeArgs.split(" ").filter { it.isNotBlank() }
             val cmd = mutableListOf("${env.root}/usr/bin/FEX", fullPath).apply { addAll(args) }
             val envVars = parseEnvVars(customEnvVars)
             val envPrefix = envVars.joinToString(" ") { "${it.first}=${it.second}" }
-            val fullCmdStr = if (envPrefix.isNotBlank()) {
-                "$envPrefix ${cmd.joinToString(" ")}"
-            } else {
-                cmd.joinToString(" ")
-            }
-
-            append("🚀 Запуск распакованного: $fullCmdStr")
+            val fullCmdStr = if (envPrefix.isNotBlank()) "$envPrefix ${cmd.joinToString(" ")}" else cmd.joinToString(" ")
+            append(" Распакованный: $fullCmdStr")
             session.launch("extracted-$extractedFileName", listOf("${env.root}/bin/sh", "-c", fullCmdStr))
         }
     }
@@ -350,6 +297,14 @@ fun DisplayScreen(autoAction: String?) {
         }
     }
     
+    // Автопрокрутка лога вниз при появлении новых строк
+    LaunchedEffect(log) {
+        if (logExpanded) {
+            delay(50)
+            logScrollState.animateScrollTo(logScrollState.maxValue)
+        }
+    }
+
     var autoDone by remember { mutableStateOf(false) }
     LaunchedEffect(autoAction, holder) {
         if (holder == null || autoDone) return@LaunchedEffect
@@ -393,12 +348,11 @@ fun DisplayScreen(autoAction: String?) {
         // ===== ПАНЕЛЬ ЗАПУСКА =====
         Text("🛠️ Запуск x86-64 приложения (FEX)", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 8.dp, bottom = 4.dp))
         
-        // Строка 1: Путь к папке + Кнопка сканирования
         Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
             OutlinedTextField(
                 value = customExeDir,
                 onValueChange = { customExeDir = it },
-                label = { Text(" Папка в Linux") },
+                label = { Text("📁 Папка в Linux") },
                 modifier = Modifier.weight(1f),
                 singleLine = true,
                 trailingIcon = {
@@ -415,20 +369,15 @@ fun DisplayScreen(autoAction: String?) {
             }
         }
 
-        DropdownMenu(
-            expanded = expandedFolderMenu,
-            onDismissRequest = { expandedFolderMenu = false },
-            modifier = Modifier.fillMaxWidth()
-        ) {
+        DropdownMenu(expanded = expandedFolderMenu, onDismissRequest = { expandedFolderMenu = false }, modifier = Modifier.fillMaxWidth()) {
             DropdownMenuItem(text = { Text("${env.x86Root}/usr/bin") }, onClick = { customExeDir = "${env.x86Root}/usr/bin"; expandedFolderMenu = false })
             DropdownMenuItem(text = { Text("${env.x86Root}/home/user/apps") }, onClick = { customExeDir = "${env.x86Root}/home/user/apps"; expandedFolderMenu = false })
         }
 
-        // Строка 2: Выбор файла
         OutlinedTextField(
             value = selectedFileName ?: "",
             onValueChange = { selectedFileName = it.ifBlank { null } },
-            label = { Text(" Файл для запуска") },
+            label = { Text("📄 Файл для запуска") },
             placeholder = { Text(if (availableBinaries.isEmpty()) "Сначала нажмите 'Scan'" else "Начните вводить имя...") },
             modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
             singleLine = true,
@@ -440,33 +389,20 @@ fun DisplayScreen(autoAction: String?) {
             }
         )
 
-        DropdownMenu(
-            expanded = expandedFileMenu,
-            onDismissRequest = { expandedFileMenu = false },
-            modifier = Modifier.fillMaxWidth()
-        ) {
+        DropdownMenu(expanded = expandedFileMenu, onDismissRequest = { expandedFileMenu = false }, modifier = Modifier.fillMaxWidth()) {
             availableBinaries.forEach { fileName ->
-                DropdownMenuItem(
-                    text = { Text(fileName) },
-                    onClick = {
-                        selectedFileName = fileName
-                        expandedFileMenu = false
-                    }
-                )
+                DropdownMenuItem(text = { Text(fileName) }, onClick = { selectedFileName = fileName; expandedFileMenu = false })
             }
         }
 
         // ===== КНОПКА РАСПАКОВКИ APPIMAGE =====
-        if (selectedFileName?.endsWith(".AppImage") == true || selectedFileName?.endsWith(".appimage") == true) {
-            Row(
-                verticalAlignment = Alignment.CenterVertically,
-                modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
-            ) {
+        if (selectedFileName?.endsWith(".AppImage", ignoreCase = true) == true) {
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth().padding(top = 8.dp)) {
                 OutlinedTextField(
                     value = extractDir,
                     onValueChange = { extractDir = it },
-                    label = { Text("📂 Директория распаковки") },
-                    placeholder = { Text("Например: $customExeDir/extracted") },
+                    label = { Text(" Директория распаковки") },
+                    placeholder = { Text("$customExeDir/extracted") },
                     modifier = Modifier.weight(1f),
                     singleLine = true
                 )
@@ -476,9 +412,7 @@ fun DisplayScreen(autoAction: String?) {
                         val appImagePath = File(customExeDir, selectedFileName!!).absolutePath
                         val target = if (extractDir.isBlank()) {
                             File(customExeDir, "${selectedFileName!!.removeSuffix(".AppImage").removeSuffix(".appimage")}.extracted").absolutePath
-                        } else {
-                            extractDir
-                        }
+                        } else extractDir
                         extractDir = target
                         extractAppImage(appImagePath, target)
                     },
@@ -489,49 +423,27 @@ fun DisplayScreen(autoAction: String?) {
                 }
             }
 
-            // Список распакованных файлов
             if (extractedFiles.isNotEmpty()) {
-                Text(
-                    "📂 Распакованные файлы (${extractedFiles.size}):",
-                    style = MaterialTheme.typography.bodySmall,
-                    modifier = Modifier.padding(top = 8.dp)
-                )
+                Text("📂 Распакованные файлы (${extractedFiles.size}):", style = MaterialTheme.typography.bodySmall, modifier = Modifier.padding(top = 8.dp))
                 FlowRow(horizontalArrangement = Arrangement.spacedBy(4.dp), modifier = Modifier.padding(top = 4.dp)) {
                     extractedFiles.take(20).forEach { fileName ->
-                        OutlinedButton(
-                            onClick = { launchExtractedApp(fileName) },
-                            modifier = Modifier.heightIn(min = 36.dp)
-                        ) {
+                        OutlinedButton(onClick = { launchExtractedApp(fileName) }, modifier = Modifier.heightIn(min = 36.dp)) {
                             Text(fileName, fontSize = 10.sp)
                         }
                     }
                 }
                 if (extractedFiles.size > 20) {
-                    Text(
-                        "... и ещё ${extractedFiles.size - 20} файлов",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
+                    Text("... и ещё ${extractedFiles.size - 20} файлов", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
             }
         }
 
         // ===== НАСТРОЙКИ ЗАПУСКА =====
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.padding(top = 4.dp)
-        ) {
-            Checkbox(
-                checked = isAppImageMode,
-                onCheckedChange = { isAppImageMode = it }
-            )
+        Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.padding(top = 4.dp)) {
+            Checkbox(checked = isAppImageMode, onCheckedChange = { isAppImageMode = it })
             Column(modifier = Modifier.padding(start = 4.dp)) {
                 Text("AppImage режим", style = MaterialTheme.typography.bodyMedium)
-                Text(
-                    "Автоматически: TMPDIR, --appimage-extract-and-run",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                Text("Автоматически: TMPDIR, --appimage-extract-and-run", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
         }
 
@@ -558,7 +470,7 @@ fun DisplayScreen(autoAction: String?) {
             enabled = selectedFileName != null && customExeDir.isNotBlank(),
             modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
         ) {
-            Text(" Запустить через FEX")
+            Text("🚀 Запустить через FEX")
         }
 
         // Стандартные кнопки
@@ -575,37 +487,61 @@ fun DisplayScreen(autoAction: String?) {
             OutlinedButton(onClick = { DisplayBridge.stop(); thread(name = "x-stop") { session.stopAll() } }) { Text("Stop") }
         }
 
-        // ===== ЛОГ =====
-        Row(
-            modifier = Modifier.fillMaxWidth().padding(top = 12.dp, bottom = 4.dp),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Text("📜 Лог вывода", style = MaterialTheme.typography.titleSmall)
-            TextButton(onClick = { 
-                clipboardManager.setText(AnnotatedString(log))
-                append("📋 Лог скопирован!")
-            }) {
-                Text("📋 Копировать")
-            }
-        }
+        // ===== СВОРАЧИВАЕМЫЙ ЛОГ =====
+        val logLineCount = log.count { it == '\n' }
+        val logIndicator = if (logExpanded) "▲ Свернуть" else "▼ Показать лог ($logLineCount строк)"
         
-        SelectionContainer {
-            Text(
-                text = log.ifEmpty { "Ожидание событий..." }, 
-                fontFamily = FontFamily.Monospace, 
-                fontSize = 10.sp,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .heightIn(max = 180.dp)
-                    .verticalScroll(rememberScrollState())
-                    .padding(8.dp)
-                    .background(
-                        MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f), 
-                        RoundedCornerShape(8.dp)
-                    )
-            )
+        OutlinedButton(
+            onClick = { logExpanded = !logExpanded },
+            modifier = Modifier.fillMaxWidth().padding(top = 12.dp)
+        ) {
+            Text(logIndicator)
+        }
+
+        if (logExpanded) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(top = 4.dp, bottom = 4.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("📜 Лог вывода", style = MaterialTheme.typography.titleSmall)
+                Row {
+                    TextButton(onClick = { 
+                        logScrollState.animateScrollTo(0)
+                    }) {
+                        Text("⬆️ Вверх")
+                    }
+                    TextButton(onClick = { 
+                        logScrollState.animateScrollTo(logScrollState.maxValue)
+                    }) {
+                        Text("⬇️ Вниз")
+                    }
+                    TextButton(onClick = { 
+                        clipboardManager.setText(AnnotatedString(log))
+                        append("📋 Лог скопирован!")
+                    }) {
+                        Text(" Копировать")
+                    }
+                }
+            }
+            
+            SelectionContainer {
+                Text(
+                    text = log.ifEmpty { "Ожидание событий..." }, 
+                    fontFamily = FontFamily.Monospace, 
+                    fontSize = 10.sp,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 120.dp, max = 280.dp)
+                        .verticalScroll(logScrollState)
+                        .padding(8.dp)
+                        .background(
+                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f), 
+                            RoundedCornerShape(8.dp)
+                        )
+                )
+            }
         }
     }
 }
