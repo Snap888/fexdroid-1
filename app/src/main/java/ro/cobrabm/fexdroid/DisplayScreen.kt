@@ -91,7 +91,8 @@ fun DisplayScreen(autoAction: String?) {
     }
 
     // ===== Переменные для выбора файла =====
-    var customExePath by remember { mutableStateOf("${env.x86Root}/usr/bin/vkcube") }
+    var customExeDir by remember { mutableStateOf("${env.x86Root}/usr/bin") }  // Путь к ПАПКЕ
+    var selectedFileName by remember { mutableStateOf<String?>(null) }         // Выбранный файл из списка
     var customExeArgs by remember { mutableStateOf("") }
     var availableBinaries by remember { mutableStateOf<List<String>>(emptyList()) }
     var expandedDropdown by remember { mutableStateOf(false) }
@@ -102,14 +103,22 @@ fun DisplayScreen(autoAction: String?) {
         thread(name = "scan-binaries") {
             try {
                 val dir = File(dirPath)
-                val files = if (dir.exists() && dir.isDirectory) {
-                    dir.listFiles()?.filter { it.isFile && it.canExecute() }
-                        ?.map { it.name }?.sorted() ?: emptyList()
-                } else {
-                    emptyList()
+                if (!dir.exists()) {
+                    append(" Директория не существует: $dirPath")
+                    availableBinaries = emptyList()
+                    isScanning = false
+                    return@thread
                 }
-                availableBinaries = files.take(200)
-                append("📂 Найдено исполняемых файлов в $dirPath: ${files.size}")
+                
+                val files = dir.listFiles()?.filter { 
+                    it.isFile  // Показываем все файлы (не только исполняемые)
+                }?.map { it.name }?.sorted() ?: emptyList()
+                
+                availableBinaries = files.take(500)  // Увеличили лимит до 500
+                append("📂 Найдено файлов в $dirPath: ${files.size}")
+                if (files.isNotEmpty()) {
+                    append("   Примеры: ${files.take(5).joinToString(", ")}")
+                }
             } catch (e: Exception) {
                 append("❌ Ошибка чтения директории: ${e.message}")
                 availableBinaries = emptyList()
@@ -119,30 +128,41 @@ fun DisplayScreen(autoAction: String?) {
         }
     }
 
-    fun launchCustomX86AppByPath(linuxPath: String) {
-        if (linuxPath.isBlank()) {
-            append("⚠️ Ошибка: путь к исполняемому файлу пуст.")
+    fun launchCustomX86AppByPath(dirPath: String, fileName: String?) {
+        if (fileName == null || fileName.isBlank()) {
+            append("️ Ошибка: не выбран файл для запуска.")
             return
         }
 
+        val fullPath = File(dirPath, fileName).absolutePath
+        
         thread(name = "custom-x86-app") {
-            // startX теперь гарантированно известен компилятору, так как объявлен выше
             startX().join()
             if (!session.startAudio()) {
                 append("⚠️ Не удалось запустить аудио.")
             }
 
-            val file = File(linuxPath)
+            val file = File(fullPath)
             if (!file.exists()) {
-                append("❌ Файл не найден по пути: $linuxPath")
+                append("❌ Файл не найден по пути: $fullPath")
                 return@thread
             }
 
+            // Делаем файл исполняемым (chmod +x)
+            try {
+                val chmodProcess = Runtime.getRuntime().exec(arrayOf("chmod", "+x", fullPath))
+                chmodProcess.waitFor()
+                append("✅ Файл сделан исполняемым: $fullPath")
+            } catch (e: Exception) {
+                append("⚠️ Не удалось сделать файл исполняемым: ${e.message}")
+                // Продолжаем запуск, даже если chmod не сработал
+            }
+
             val args = customExeArgs.split(" ").filter { it.isNotBlank() }
-            val cmd = mutableListOf("${env.root}/usr/bin/FEX", linuxPath).apply { addAll(args) }
+            val cmd = mutableListOf("${env.root}/usr/bin/FEX", fullPath).apply { addAll(args) }
 
             append("🚀 Запуск: ${cmd.joinToString(" ")}")
-            session.launch("custom-x86-${file.name}", cmd)
+            session.launch("custom-x86-$fileName", cmd)
         }
     }
 
@@ -183,7 +203,7 @@ fun DisplayScreen(autoAction: String?) {
                 session.launch("xev", listOf("${env.root}/bin/sh", "-c", "LD_PRELOAD=${env.root}/usr/libexec/coreutils/libstdbuf.so _STDBUF_O=L exec \"\$@\"", "sh", "${env.root}/usr/bin/xev", "-geometry", "${session.width}x${session.height}+0+0", "-event", "keyboard", "-event", "button", "-event", "mouse")) 
             }
             "fex-vkcube" -> thread { startX().join(); session.launch("vkcube-x86", listOf("${env.root}/usr/bin/FEX", "${env.x86Root}/usr/bin/vkcube")) }
-            "custom-x86" -> launchCustomX86AppByPath(customExePath)
+            "custom-x86" -> launchCustomX86AppByPath(customExeDir, selectedFileName)
         }
     }
 
@@ -210,17 +230,19 @@ fun DisplayScreen(autoAction: String?) {
         // ===== ПАНЕЛЬ ЗАПУСКА КАСТОМНЫХ x86-64 ПРИЛОЖЕНИЙ =====
         Text("🛠️ Запуск x86-64 приложения (FEX)", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 8.dp))
         
+        // Поле для выбора ПАПКИ
         OutlinedTextField(
-            value = customExePath,
-            onValueChange = { customExePath = it },
-            label = { Text("Путь к исполняемому файлу в Linux") },
+            value = customExeDir,
+            onValueChange = { customExeDir = it },
+            label = { Text("Путь к папке с приложениями в Linux") },
+            placeholder = { Text("Например: /data/user/0/.../files/x86_64-steam/usr/bin") },
             trailingIcon = {
-                // Используем простой текст вместо Icons, чтобы избежать ошибок зависимости
                 TextButton(onClick = { expandedDropdown = true }) {
                     Text("▼", fontSize = 18.sp)
                 }
             },
-            modifier = Modifier.fillMaxWidth().padding(top = 4.dp)
+            modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+            maxLines = 2
         )
         
         DropdownMenu(
@@ -228,22 +250,57 @@ fun DisplayScreen(autoAction: String?) {
             onDismissRequest = { expandedDropdown = false },
             modifier = Modifier.fillMaxWidth()
         ) {
-            if (availableBinaries.isEmpty() && !isScanning) {
-                DropdownMenuItem(
-                    text = { Text("Список пуст. Нажмите 'Сканировать'", style = MaterialTheme.typography.bodySmall) },
-                    onClick = {}
-                )
-            } else if (isScanning) {
-                DropdownMenuItem(
-                    text = { Text("Сканирование...", style = MaterialTheme.typography.bodySmall) },
-                    onClick = {}
-                )
-            } else {
+            // Быстрые пути к популярным директориям
+            DropdownMenuItem(
+                text = { Text("${env.x86Root}/usr/bin") },
+                onClick = {
+                    customExeDir = "${env.x86Root}/usr/bin"
+                    expandedDropdown = false
+                }
+            )
+            DropdownMenuItem(
+                text = { Text("${env.x86Root}/home/user/apps") },
+                onClick = {
+                    customExeDir = "${env.x86Root}/home/user/apps"
+                    expandedDropdown = false
+                }
+            )
+            DropdownMenuItem(
+                text = { Text("/data/user/0/ro.cobrabm.fexdroid/files/rootfs/usr/bin") },
+                onClick = {
+                    customExeDir = "/data/user/0/ro.cobrabm.fexdroid/files/rootfs/usr/bin"
+                    expandedDropdown = false
+                }
+            )
+        }
+
+        // Поле для выбора ФАЙЛА из отсканированных
+        if (availableBinaries.isNotEmpty()) {
+            OutlinedTextField(
+                value = selectedFileName ?: "",
+                onValueChange = { selectedFileName = it.ifBlank { null } },
+                label = { Text("Выберите файл для запуска") },
+                placeholder = { Text("Начните вводить имя файла...") },
+                trailingIcon = {
+                    TextButton(onClick = { expandedDropdown = true }) {
+                        Text("", fontSize = 18.sp)
+                    }
+                },
+                modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                singleLine = true
+            )
+            
+            // Выпадающий список файлов
+            DropdownMenu(
+                expanded = expandedDropdown,
+                onDismissRequest = { expandedDropdown = false },
+                modifier = Modifier.fillMaxWidth()
+            ) {
                 availableBinaries.forEach { fileName ->
                     DropdownMenuItem(
                         text = { Text(fileName) },
                         onClick = {
-                            customExePath = "${env.x86Root}/usr/bin/$fileName"
+                            selectedFileName = fileName
                             expandedDropdown = false
                         }
                     )
@@ -251,11 +308,17 @@ fun DisplayScreen(autoAction: String?) {
             }
         }
 
-        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 4.dp)) {
-            Button(onClick = { scanLinuxDirectory("${env.x86Root}/usr/bin") }, enabled = !isScanning) {
-                Text(if (isScanning) "Сканирование..." else "📂 Сканировать /usr/bin")
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.padding(top = 8.dp)) {
+            Button(
+                onClick = { scanLinuxDirectory(customExeDir) }, 
+                enabled = !isScanning && customExeDir.isNotBlank()
+            ) {
+                Text(if (isScanning) "🔄 Сканирование..." else "📂 Сканировать папку")
             }
-            Button(onClick = { customExePath = "${env.x86Root}/usr/bin/vkcube" }) {
+            Button(onClick = { 
+                customExeDir = "${env.x86Root}/usr/bin"
+                selectedFileName = "vkcube"
+            }) {
                 Text("vkcube (by default)")
             }
         }
@@ -269,7 +332,8 @@ fun DisplayScreen(autoAction: String?) {
         )
 
         Button(
-            onClick = { launchCustomX86AppByPath(customExePath) },
+            onClick = { launchCustomX86AppByPath(customExeDir, selectedFileName) },
+            enabled = selectedFileName != null && customExeDir.isNotBlank(),
             modifier = Modifier.fillMaxWidth().padding(top = 8.dp)
         ) {
             Text("🚀 Запустить через FEX")
