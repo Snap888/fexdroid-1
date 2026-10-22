@@ -64,6 +64,12 @@ PKGS=(
   libqt6svg6
   qt6-image-formats-plugins
   qt6-qpa-plugins
+
+  # === AppImage support ===
+  squashfs-tools          # unsquashfs / mksquashfs
+  fuse3                   # современный FUSE
+  libfuse3-3
+  libfuse2t64             # многие старые AppImage требуют libfuse2
 )
 
 cname="fexdroid-steamfs-$$"
