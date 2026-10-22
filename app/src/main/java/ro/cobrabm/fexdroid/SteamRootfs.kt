@@ -16,9 +16,10 @@ import kotlin.concurrent.thread
  * built by .github/workflows/steam-rootfs.yml. Replaces the adb step of
  * scripts/deploy-phone.sh for phones without a PC at hand.
  * The archive is extracted while it downloads (no second copy on flash).
+*https://github.com/cobrabm12/fexdroid/releases/download/steam-rootfs/rootfs-x86_64-steam.tar.gz
  */
 object SteamRootfs {
-    const val URL = "https://github.com/cobrabm12/fexdroid/releases/download/steam-rootfs/rootfs-x86_64-steam.tar.gz"
+    const val URL = "https://github.com/Snap888/fexdroid-1/releases/download/steam-rootfs/rootfs-x86_64-steam.tar.gz"
 
     sealed interface State {
         data object Idle : State
