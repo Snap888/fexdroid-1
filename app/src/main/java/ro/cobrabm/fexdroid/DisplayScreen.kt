@@ -1,10 +1,7 @@
 package ro.cobrabm.fexdroid
 
-import android.net.Uri
 import android.util.Log
 import android.view.SurfaceHolder
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -14,10 +11,13 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material3.Button
+import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
-import androidx.compose.material3.ExposedDropdownMenuBox
-import androidx.compose.material3.ExposedDropdownMenuDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -117,7 +117,7 @@ fun DisplayScreen(autoAction: String?) {
         }
     }
 
-    // ===== 3. Базовые функции X11 =====
+    // ===== 2. Базовые функции X11 =====
     fun startX() = thread(name = "start-x") {
         if (!env.ensureInstalled(::append)) return@thread
         if (!session.startX()) { append("Xvfb did not report a framebuffer (see the log)."); return@thread }
@@ -144,7 +144,7 @@ fun DisplayScreen(autoAction: String?) {
         if (session.startAudio()) session.launch(title, listOf("${env.root}/bin/sh", "-c", cmd))
     }
 
-    // ===== 4. Эффекты жизненного цикла =====
+    // ===== 3. Эффекты жизненного цикла =====
     val toneRaw = "--raw --format=s16le --rate=48000 --channels=2"
 
     DisposableEffect(Unit) { 
@@ -183,7 +183,7 @@ fun DisplayScreen(autoAction: String?) {
         }
     }
 
-    // ===== 5. UI =====
+    // ===== 4. UI =====
     Column(Modifier.padding(8.dp)) {
         AndroidView(
             modifier = Modifier.fillMaxWidth().aspectRatio(session.width.toFloat() / session.height),
@@ -204,44 +204,44 @@ fun DisplayScreen(autoAction: String?) {
         // ===== ПАНЕЛЬ ЗАПУСКА КАСТОМНЫХ x86-64 ПРИЛОЖЕНИЙ =====
         Text("🛠️ Запуск x86-64 приложения (FEX)", style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 8.dp))
         
-        ExposedDropdownMenuBox(
+        // Стабильный TextField с иконкой выпадающего списка
+        OutlinedTextField(
+            value = customExePath,
+            onValueChange = { customExePath = it },
+            label = { Text("Путь к исполняемому файлу в Linux") },
+            trailingIcon = {
+                IconButton(onClick = { expandedDropdown = true }) {
+                    Icon(Icons.Default.ArrowDropDown, contentDescription = "Открыть список")
+                }
+            },
+            modifier = Modifier.fillMaxWidth().padding(top = 4.dp)
+        )
+        
+        // Стабильный DropdownMenu (без устаревшего ExposedDropdownMenuBox)
+        DropdownMenu(
             expanded = expandedDropdown,
-            onExpandedChange = { expandedDropdown = !expandedDropdown }
+            onDismissRequest = { expandedDropdown = false },
+            modifier = Modifier.fillMaxWidth()
         ) {
-            OutlinedTextField(
-                value = customExePath,
-                onValueChange = { customExePath = it },
-                label = { Text("Путь к исполняемому файлу в Linux") },
-                trailingIcon = { ExposedDropdownMenuDefaults.TrailingIcon(expanded = expandedDropdown) },
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .menuAnchor()
-                    .padding(top = 4.dp)
-            )
-            androidx.compose.material3.ExposedDropdownMenu(
-                expanded = expandedDropdown,
-                onDismissRequest = { expandedDropdown = false }
-            ) {
-                if (availableBinaries.isEmpty() && !isScanning) {
+            if (availableBinaries.isEmpty() && !isScanning) {
+                DropdownMenuItem(
+                    text = { Text("Список пуст. Нажмите 'Сканировать'", style = MaterialTheme.typography.bodySmall) },
+                    onClick = {}
+                )
+            } else if (isScanning) {
+                DropdownMenuItem(
+                    text = { Text("Сканирование...", style = MaterialTheme.typography.bodySmall) },
+                    onClick = {}
+                )
+            } else {
+                availableBinaries.forEach { fileName ->
                     DropdownMenuItem(
-                        text = { Text("Список пуст. Нажмите 'Сканировать'", style = MaterialTheme.typography.bodySmall) },
-                        onClick = {}
+                        text = { Text(fileName) },
+                        onClick = {
+                            customExePath = "${env.x86Root}/usr/bin/$fileName"
+                            expandedDropdown = false
+                        }
                     )
-                } else if (isScanning) {
-                    DropdownMenuItem(
-                        text = { Text("Сканирование...", style = MaterialTheme.typography.bodySmall) },
-                        onClick = {}
-                    )
-                } else {
-                    availableBinaries.forEach { fileName ->
-                        DropdownMenuItem(
-                            text = { Text(fileName) },
-                            onClick = {
-                                customExePath = "${env.x86Root}/usr/bin/$fileName"
-                                expandedDropdown = false
-                            }
-                        )
-                    }
                 }
             }
         }
@@ -291,7 +291,7 @@ fun DisplayScreen(autoAction: String?) {
             fontSize = 10.sp, 
             modifier = Modifier
                 .padding(top = 8.dp)
-                .verticalScroll(rememberScrollState()) // <-- ДОБАВЛЕН СКРОЛЛ
+                .verticalScroll(rememberScrollState())
         )
     }
 }
