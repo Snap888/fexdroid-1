@@ -17,7 +17,8 @@ import android.view.inputmethod.InputConnection
  * - mouse (Bluetooth / DeX): absolute hover + buttons + wheel, or relative when captured;
  * - touch, as on any touchscreen: tap = left click, swipe = scroll (wheel), long press then
  *   move = left button drag (selection boxes, sliders), two-finger tap = right click. The
- *   on-screen keys can swap the two buttons and make a swipe a middle button drag (OnScreenKeys).
+ *   on-screen keys / free controls can swap the two buttons and make a swipe a middle button
+ *   drag (OnScreenKeys, OnScreenControls).
  * Ctrl+Alt releases a captured mouse.
  */
 class InputSurfaceView(context: Context, private val xWidth: Int, private val xHeight: Int) : SurfaceView(context) {
@@ -156,8 +157,11 @@ class InputSurfaceView(context: Context, private val xWidth: Int, private val xH
         return x >= 0 && y >= 0 && x < width && y < height
     }
 
+    private fun tapIsSecond() = OnScreenControls.tapIsSecondButton || OnScreenKeys.tapIsSecondButton
+    private fun swipeIsDrag() = OnScreenControls.swipeIsDrag || OnScreenKeys.swipeIsDrag
+
     /** The button of a tap, or with [other] the button of a tap with two fingers. */
-    private fun tapButton(other: Boolean = false) = if (OnScreenKeys.tapIsSecondButton != other) 3 else 1
+    private fun tapButton(other: Boolean = false) = if (tapIsSecond() != other) 3 else 1
 
     private fun endTouch(click: Boolean) {
         removeCallbacks(longPress)
@@ -202,7 +206,7 @@ class InputSurfaceView(context: Context, private val xWidth: Int, private val xH
                 when (touch) {
                     Touch.PENDING -> if (kotlin.math.hypot(fx - lastX, fy - lastY) > slop) {
                         removeCallbacks(longPress)
-                        if (OnScreenKeys.swipeIsDrag) {
+                        if (swipeIsDrag()) {
                             touch = Touch.CAMERA
                             XInput.button(2, true) // At the place the finger went down.
                             val (x, y) = toX(fx, fy); XInput.moveTo(x, y)
