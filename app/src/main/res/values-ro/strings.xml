@@ -154,6 +154,8 @@
     <string name="player_controls_hide">Hide on-screen controls</string>
     <string name="player_controls_show">On-screen controls</string>
     <string name="player_controls_hint">Keys, virtual gamepad, or your layout</string>
+    <string name="player_edit_controls">Edit layout</string>
+    <string name="player_edit_controls_hint">Move buttons and sticks, assign actions</string>
     <string name="settings_direct_frames">Frames straight from the game (experimental)</string>
     <string name="settings_direct_frames_about">The game\'s picture skips the X server on its way to the screen: less work for the processor, less heat. Windows that open over the game do not show while it draws.</string>
     <string name="settings_disk_cache">Code cache on disk</string>
