@@ -397,7 +397,7 @@ private fun EditorElement(
     val label = when (el) {
         is ControlElement.Button -> el.label.ifBlank {
             when (val a = el.action) {
-                is ControlAction.Key -> a.label.ifBlank { "KEY" }
+                is ControlAction.Key -> "KEY"
                 is ControlAction.KeyCombo -> a.xKeycodes.joinToString("+")
                 is ControlAction.PadButton -> "BTN"
                 ControlAction.Menu -> "☰"
