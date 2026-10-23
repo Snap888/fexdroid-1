@@ -61,6 +61,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
@@ -181,15 +182,17 @@ fun PlayerScreen() {
 
         val runningInput = state is SessionState.Running && GameSession.inputReady
         val mode = AppSettings.controlMode
+        // Hide on-screen controls while any panel is open so they cannot steal taps.
+        val hideControls = menuOpen || logOpen || confirmStop || editingControls
         when {
-            runningInput && mode == OnScreenControlMode.Keys -> {
+            runningInput && !hideControls && mode == OnScreenControlMode.Keys -> {
                 OnScreenKeys.Strip("left", remember(AppSettings.keysLeft) { OnScreenKeys.parse(AppSettings.keysLeft) },
                     Modifier.align(Alignment.CenterStart).padding(start = edge))
                 // The menu button would sit on the keys: it is the first of them.
                 OnScreenKeys.Strip("right", remember(AppSettings.keysRight) { listOf(OnScreenKeys.Menu) + OnScreenKeys.parse(AppSettings.keysRight) },
                     Modifier.align(Alignment.CenterEnd).padding(end = edge), onMenu = { menuOpen = !menuOpen })
             }
-            runningInput && !editingControls && (mode == OnScreenControlMode.Gamepad || mode == OnScreenControlMode.MouseKeyboard) -> {
+            runningInput && !hideControls && (mode == OnScreenControlMode.Gamepad || mode == OnScreenControlMode.MouseKeyboard) -> {
                 val profile = remember(mode, AppSettings.customControlProfile) {
                     AppSettings.activeControlProfile() ?: if (mode == OnScreenControlMode.MouseKeyboard) ControlProfile.defaultMouseKeyboard() else ControlProfile.defaultGamepad()
                 }
@@ -198,13 +201,36 @@ fun PlayerScreen() {
                     onMenu = { menuOpen = !menuOpen },
                 )
             }
-            state is SessionState.Running || state is SessionState.Starting -> {
-                // Middle of the right edge: games keep their own buttons and figures in the corners.
-                FloatingMenuButton(Modifier.align(Alignment.CenterEnd).displayCutoutPadding()) { menuOpen = !menuOpen }
-            }
+        }
+        // Always available way to open/close the menu (not covered by pad overlay).
+        if ((state is SessionState.Running || state is SessionState.Starting) && !editingControls) {
+            FloatingMenuButton(
+                Modifier
+                    .align(Alignment.CenterEnd)
+                    .displayCutoutPadding()
+                    .zIndex(8f),
+            ) { menuOpen = !menuOpen }
         }
 
-        AnimatedVisibility(menuOpen, Modifier.align(Alignment.TopEnd).displayCutoutPadding(), enter = fadeIn(), exit = fadeOut()) {
+        // Dim scrim + menu above controls (zIndex high so hits reach GameMenu).
+        if (menuOpen) {
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .zIndex(10f)
+                    .background(Color.Black.copy(alpha = 0.35f))
+                    .clickable { menuOpen = false },
+            )
+        }
+        AnimatedVisibility(
+            menuOpen,
+            Modifier
+                .align(Alignment.TopEnd)
+                .displayCutoutPadding()
+                .zIndex(11f),
+            enter = fadeIn(),
+            exit = fadeOut(),
+        ) {
             val canEdit = AppSettings.controlMode == OnScreenControlMode.Gamepad ||
                 AppSettings.controlMode == OnScreenControlMode.MouseKeyboard
             GameMenu(
