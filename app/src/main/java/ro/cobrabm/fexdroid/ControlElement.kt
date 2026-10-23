@@ -309,6 +309,56 @@ data class ControlProfile(
             return ControlProfile("Gamepad", elements)
         }
 
+
+        /**
+         * Mouse + keyboard layout: free-placement keys/mouse buttons; empty screen is a trackpad
+         * (relative mouse via [XInput.moveBy]).
+         */
+        fun defaultMouseKeyboard(): ControlProfile {
+            fun key(label: String, androidKey: Int, x: Float, y: Float, scale: Float = 0.85f, sticky: Boolean = false) =
+                ControlElement.Button(
+                    x = x, y = y, scale = scale, opacity = 0.5f, label = label,
+                    action = ControlAction.fromAndroidKey(androidKey, sticky) ?: ControlAction.None,
+                    toggle = sticky,
+                )
+            fun mouse(label: String, btn: Int, x: Float, y: Float) =
+                ControlElement.Button(
+                    x = x, y = y, scale = 0.9f, opacity = 0.5f, label = label,
+                    action = ControlAction.MouseButton(btn),
+                )
+            fun combo(label: String, androidKeys: List<Int>, x: Float, y: Float): ControlElement.Button {
+                val codes = androidKeys.mapNotNull { ControlAction.fromAndroidKey(it)?.xKeycode }
+                return ControlElement.Button(
+                    x = x, y = y, scale = 0.75f, opacity = 0.5f, label = label,
+                    action = if (codes.isEmpty()) ControlAction.None else ControlAction.KeyCombo(codes),
+                )
+            }
+            val elements = listOf(
+                // WASD cluster (left)
+                key("W", android.view.KeyEvent.KEYCODE_W, 0.14f, 0.55f),
+                key("A", android.view.KeyEvent.KEYCODE_A, 0.08f, 0.68f),
+                key("S", android.view.KeyEvent.KEYCODE_S, 0.14f, 0.68f),
+                key("D", android.view.KeyEvent.KEYCODE_D, 0.20f, 0.68f),
+                key("Shift", android.view.KeyEvent.KEYCODE_SHIFT_LEFT, 0.10f, 0.82f, sticky = true),
+                key("Ctrl", android.view.KeyEvent.KEYCODE_CTRL_LEFT, 0.20f, 0.82f, sticky = true),
+                key("Space", android.view.KeyEvent.KEYCODE_SPACE, 0.35f, 0.88f, scale = 1.1f),
+                // Right: mouse + utility
+                mouse("LMB", 1, 0.82f, 0.55f),
+                mouse("RMB", 3, 0.92f, 0.55f),
+                mouse("MMB", 2, 0.87f, 0.42f),
+                key("Esc", android.view.KeyEvent.KEYCODE_ESCAPE, 0.08f, 0.18f, scale = 0.7f),
+                key("Tab", android.view.KeyEvent.KEYCODE_TAB, 0.18f, 0.18f, scale = 0.7f),
+                key("Enter", android.view.KeyEvent.KEYCODE_ENTER, 0.90f, 0.78f, scale = 0.8f),
+                combo("Ctrl+C", listOf(android.view.KeyEvent.KEYCODE_CTRL_LEFT, android.view.KeyEvent.KEYCODE_C), 0.78f, 0.28f),
+                combo("Ctrl+V", listOf(android.view.KeyEvent.KEYCODE_CTRL_LEFT, android.view.KeyEvent.KEYCODE_V), 0.90f, 0.28f),
+                ControlElement.Button(
+                    x = 0.96f, y = 0.12f, scale = 0.7f, label = "",
+                    action = ControlAction.Menu,
+                ),
+            )
+            return ControlProfile("Mouse/Keyboard", elements)
+        }
+
         /** Keyboard-like default close to OnScreenKeys.DEFAULT_*. */
         fun defaultKeys(): ControlProfile = fromSideStrips(
             OnScreenKeys.DEFAULT_LEFT,
