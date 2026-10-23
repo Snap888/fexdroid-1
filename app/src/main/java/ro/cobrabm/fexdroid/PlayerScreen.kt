@@ -85,6 +85,7 @@ fun PlayerScreen() {
     val res = GameSession.resolution
     var view by remember { mutableStateOf<InputSurfaceView?>(null) }
     var menuOpen by remember { mutableStateOf(false) }
+    var editingControls by remember { mutableStateOf(false) }
     var logOpen by remember { mutableStateOf(false) }
     var confirmStop by remember { mutableStateOf(false) }
     var keyboardShown by remember { mutableStateOf(false) }
@@ -107,11 +108,12 @@ fun PlayerScreen() {
         }
     }
 
-    androidx.compose.runtime.SideEffect { InputSurfaceView.overlayOpen = menuOpen || logOpen || confirmStop }
+    androidx.compose.runtime.SideEffect { InputSurfaceView.overlayOpen = menuOpen || logOpen || confirmStop || editingControls }
     DisposableEffect(Unit) { onDispose { InputSurfaceView.overlayOpen = false } }
 
     BackHandler {
         when {
+            editingControls -> editingControls = false
             logOpen -> logOpen = false
             menuOpen -> menuOpen = false
             state is SessionState.Running || state is SessionState.Starting -> menuOpen = true
@@ -271,6 +273,7 @@ private fun FloatingMenuButton(modifier: Modifier, onClick: () -> Unit) {
 private fun GameMenu(
     keyboardShown: Boolean, mouseCaptured: Boolean,
     onKeyboard: () -> Unit, onKeys: () -> Unit, onMouse: () -> Unit, onLog: () -> Unit,
+    onEditControls: (() -> Unit)? = null,
     onMinimize: () -> Unit, onStop: () -> Unit, onClose: () -> Unit,
 ) {
     var frames by remember { mutableLongStateOf(DisplayBridge.changedFrames()) }
@@ -302,6 +305,14 @@ private fun GameMenu(
                 OnScreenControlMode.Gamepad -> str(R.string.settings_control_gamepad)
                 OnScreenControlMode.MouseKeyboard -> str(R.string.settings_control_mouse_keyboard)
             })
+            if (onEditControls != null) {
+                MenuItem(
+                    AppIcons.Build,
+                    str(R.string.player_edit_controls),
+                    onEditControls,
+                    str(R.string.player_edit_controls_hint),
+                )
+            }
             MenuItem(AppIcons.Mouse, if (mouseCaptured) str(R.string.player_release_mouse) else str(R.string.player_capture_mouse),
                 onMouse, str(R.string.player_capture_hint))
             MenuItem(AppIcons.Log, str(R.string.player_log), onLog)
