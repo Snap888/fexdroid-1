@@ -419,6 +419,13 @@ object OnScreenControls {
     fun filter(e: MotionEvent): MotionEvent? {
         if (!active && fingers.isEmpty()) return e
         if (!e.isFromSource(InputDevice.SOURCE_TOUCHSCREEN)) return e
+        // Player menu / log / editor: never claim touches; release any held controls.
+        if (InputSurfaceView.overlayOpen) {
+            if (fingers.isNotEmpty()) {
+                for (f in fingers.keys.toList()) lift(f)
+            }
+            return e
+        }
         val action = e.actionMasked
         val index = e.actionIndex
         val finger = e.getPointerId(index)
@@ -426,9 +433,7 @@ object OnScreenControls {
         when (action) {
             MotionEvent.ACTION_DOWN, MotionEvent.ACTION_POINTER_DOWN -> {
                 if (action == MotionEvent.ACTION_DOWN) for (f in fingers.keys.toList()) lift(f)
-                if (InputSurfaceView.overlayOpen) {
-                    // Menus own the touch stream.
-                } else {
+                run {
                     val x = e.getX(index)
                     val y = e.getY(index)
                     val hit = spots.entries.firstOrNull { it.value.area.contains(x, y) }
