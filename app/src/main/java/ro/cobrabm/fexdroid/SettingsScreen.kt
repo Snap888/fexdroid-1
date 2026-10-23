@@ -50,24 +50,6 @@ import androidx.compose.ui.unit.sp
 fun SettingsScreen() {
     val ctx = LocalContext.current
     val env = remember { LinuxEnv(ctx) }
-    var editingControls by remember { mutableStateOf(false) }
-    if (editingControls) {
-        val initial = remember {
-            AppSettings.activeControlProfile()
-                ?: ControlProfile.fromJsonString(AppSettings.customControlProfile)
-                ?: ControlProfile.defaultGamepad()
-        }
-        ControlEditorScreen(
-            initial = initial,
-            onSave = { profile ->
-                AppSettings.updateCustomControlProfile(profile.toJsonString())
-                AppSettings.updateControlMode(OnScreenControlMode.Custom)
-                editingControls = false
-            },
-            onCancel = { editingControls = false },
-        )
-        return
-    }
     Box(Modifier.fillMaxSize(), contentAlignment = Alignment.TopCenter) {
         Column(
             Modifier.widthIn(max = 680.dp).fillMaxWidth().verticalScroll(rememberScrollState()).padding(16.dp),
@@ -144,6 +126,7 @@ fun SettingsScreen() {
                     AppSettings.gameWithoutSteam, AppSettings::updateGameWithoutSteam,
                 )
                 Note(str(R.string.settings_without_steam_note))
+                // Experiment: Valve's own arm64 client instead of the translated one.
                 Setting(str(R.string.settings_steam_arm64), str(R.string.settings_steam_arm64_about)) {
                     TextButton(enabled = !GameSession.active, onClick = { GameSession.start(ctx, Game.STEAM_ARM64) }) {
                         Text(str(R.string.settings_steam_arm64_start))
@@ -161,7 +144,7 @@ fun SettingsScreen() {
                                 OnScreenControlMode.Off -> str(R.string.settings_control_off)
                                 OnScreenControlMode.Keys -> str(R.string.settings_control_keys)
                                 OnScreenControlMode.Gamepad -> str(R.string.settings_control_gamepad)
-                                OnScreenControlMode.Custom -> str(R.string.settings_control_custom)
+                                OnScreenControlMode.MouseKeyboard -> str(R.string.settings_control_mouse_keyboard)
                             }
                         },
                         AppSettings::updateControlMode,
@@ -181,17 +164,11 @@ fun SettingsScreen() {
                     }
                     OnScreenControlMode.Gamepad -> {
                         Note(str(R.string.settings_gamepads_about))
-                        TextButton(onClick = { editingControls = true }) {
-                            Text(str(R.string.editor_open))
-                        }
                     }
-                    OnScreenControlMode.Custom -> {
-                        Note(str(R.string.settings_control_custom_about))
-                        TextButton(onClick = { editingControls = true }) {
-                            Text(str(R.string.editor_open))
-                        }
+                    OnScreenControlMode.MouseKeyboard -> {
+                        Note(str(R.string.settings_control_mouse_keyboard_about))
                         TextButton(onClick = { AppSettings.resetCustomControlProfile() }) {
-                            Text(str(R.string.settings_control_custom_reset))
+                            Text(str(R.string.settings_control_mouse_keyboard_reset))
                         }
                     }
                     OnScreenControlMode.Off -> {}
@@ -274,6 +251,7 @@ private fun SwitchSetting(title: String, subtitle: String?, checked: Boolean, on
     }
 }
 
+/** One side's keys, as the line of names OnScreenKeys reads. */
 @Composable
 private fun KeyLayout(title: String, value: String, onChange: (String) -> Unit) {
     val unknown = remember(value) { OnScreenKeys.unknown(value) }
