@@ -121,8 +121,26 @@ object AppSettings {
     val onScreenKeys get() = controlMode == OnScreenControlMode.Keys
     var keysLeft by mutableStateOf(OnScreenKeys.DEFAULT_LEFT); private set
     var keysRight by mutableStateOf(OnScreenKeys.DEFAULT_RIGHT); private set
-    /** JSON of a [ControlProfile] for [OnScreenControlMode.Custom]. */
+    /**
+     * Legacy single-layout JSON (migrated into [userProfiles] on first load).
+     * Still written when saving so older builds can read something.
+     */
     var customControlProfile by mutableStateOf(""); private set
+
+    /** User-created / edited profiles (JSON array of [ControlProfileEntry]). */
+    var userProfilesJson by mutableStateOf("[]"); private set
+
+    /** Active layout id for Gamepad mode (built-in or user). */
+    var activeGamepadProfileId by mutableStateOf(ControlProfiles.ID_XBOX360); private set
+
+    /** Active layout id for Mouse/Keyboard mode. */
+    var activeMkProfileId by mutableStateOf(ControlProfiles.ID_MK_DEFAULT); private set
+
+    /**
+     * When true and mode is Mouse/Keyboard, empty screen area moves the mouse (trackpad).
+     * Independent of the selected MK profile.
+     */
+    var trackpadEnabled by mutableStateOf(true); private set
     /** Dota 2's video settings set to the cheapest values before a session starts (DotaProfile). */
     var dotaPerformance by mutableStateOf(false); private set
     /** FEX speed/accuracy trade-off (FexConfig), written before every game start. */
@@ -165,6 +183,13 @@ object AppSettings {
         keysLeft = prefs.getString("keys_left", null) ?: OnScreenKeys.DEFAULT_LEFT
         keysRight = prefs.getString("keys_right", null) ?: OnScreenKeys.DEFAULT_RIGHT
         customControlProfile = prefs.getString("control_profile_custom", null) ?: ""
+        userProfilesJson = prefs.getString("control_profiles_user", null) ?: "[]"
+        activeGamepadProfileId = prefs.getString("control_profile_gamepad_id", null)
+            ?: ControlProfiles.ID_XBOX360
+        activeMkProfileId = prefs.getString("control_profile_mk_id", null)
+            ?: ControlProfiles.ID_MK_DEFAULT
+        trackpadEnabled = prefs.getBoolean("trackpad_enabled", true)
+        migrateLegacyProfileIfNeeded()
         // Prefer the new key; fall back to the old boolean so existing installs keep Keys on.
         controlMode = prefs.getString("control_mode", null)?.let { raw ->
             when (raw) {
@@ -223,31 +248,192 @@ object AppSettings {
         prefs.edit().putString("control_profile_custom", json).apply()
     }
 
-    fun resetCustomControlProfile() {
-        val json = when (controlMode) {
-            OnScreenControlMode.Gamepad -> ControlProfile.defaultGamepad().toJsonString()
-            else -> ControlProfile.defaultMouseKeyboard().toJsonString()
-        }
-        updateCustomControlProfile(json)
+    fun updateTrackpadEnabled(v: Boolean) {
+        trackpadEnabled = v
+        prefs.edit().putBoolean("trackpad_enabled", v).apply()
     }
 
-    /** Profile to draw for the current mode, or null when Off / Keys (Keys uses OnScreenKeys). */
+    fun toggleTrackpad() = updateTrackpadEnabled(!trackpadEnabled)
+
+    private fun persistUserProfiles(json: String) {
+        userProfilesJson = json
+        prefs.edit().putString("control_profiles_user", json).apply()
+    }
+
+    private fun persistActiveIds() {
+        prefs.edit()
+            .putString("control_profile_gamepad_id", activeGamepadProfileId)
+            .putString("control_profile_mk_id", activeMkProfileId)
+            .apply()
+    }
+
+    /** One-time: old single custom JSON → user profile. */
+    private fun migrateLegacyProfileIfNeeded() {
+        if (customControlProfile.isBlank()) return
+        val users = loadUserEntries()
+        if (users.isNotEmpty()) return
+        val layout = ControlProfile.fromJsonString(customControlProfile) ?: return
+        if (layout.elements.isEmpty()) return
+        val kind = if (controlMode == OnScreenControlMode.MouseKeyboard) ProfileKind.MouseKeyboard
+        else ProfileKind.Gamepad
+        val entry = ControlProfileEntry(
+            id = ControlProfiles.newUserId(),
+            name = layout.name.ifBlank { "Custom" },
+            kind = kind,
+            builtIn = false,
+            layout = layout,
+        )
+        saveUserEntries(listOf(entry))
+        if (kind == ProfileKind.Gamepad) {
+            activeGamepadProfileId = entry.id
+        } else {
+            activeMkProfileId = entry.id
+        }
+        persistActiveIds()
+    }
+
+    private fun loadUserEntries(): List<ControlProfileEntry> {
+        val arr = runCatching { org.json.JSONArray(userProfilesJson) }.getOrNull() ?: return emptyList()
+        return buildList {
+            for (i in 0 until arr.length()) {
+                val e = arr.optJSONObject(i)?.let { ControlProfileEntry.fromJson(it) }
+                if (e != null) add(e)
+            }
+        }
+    }
+
+    private fun saveUserEntries(list: List<ControlProfileEntry>) {
+        val arr = org.json.JSONArray()
+        for (e in list) arr.put(e.toJson())
+        persistUserProfiles(arr.toString())
+    }
+
+    /** Built-ins + user profiles of the given kind. */
+    fun profilesFor(kind: ProfileKind): List<ControlProfileEntry> {
+        val built = ControlProfiles.builtIns().filter { it.kind == kind }
+        val users = loadUserEntries().filter { it.kind == kind }
+        return built + users
+    }
+
+    fun profilesForCurrentMode(): List<ControlProfileEntry> = when (controlMode) {
+        OnScreenControlMode.Gamepad -> profilesFor(ProfileKind.Gamepad)
+        OnScreenControlMode.MouseKeyboard -> profilesFor(ProfileKind.MouseKeyboard)
+        else -> emptyList()
+    }
+
+    fun activeProfileId(): String = when (controlMode) {
+        OnScreenControlMode.Gamepad -> activeGamepadProfileId
+        OnScreenControlMode.MouseKeyboard -> activeMkProfileId
+        else -> ""
+    }
+
+    fun findProfile(id: String): ControlProfileEntry? =
+        ControlProfiles.builtIns().firstOrNull { it.id == id }
+            ?: loadUserEntries().firstOrNull { it.id == id }
+
+    fun selectProfile(id: String) {
+        val entry = findProfile(id) ?: return
+        when (entry.kind) {
+            ProfileKind.Gamepad -> {
+                activeGamepadProfileId = id
+                if (controlMode != OnScreenControlMode.Gamepad) {
+                    updateControlMode(OnScreenControlMode.Gamepad)
+                }
+            }
+            ProfileKind.MouseKeyboard -> {
+                activeMkProfileId = id
+                if (controlMode != OnScreenControlMode.MouseKeyboard) {
+                    updateControlMode(OnScreenControlMode.MouseKeyboard)
+                }
+            }
+        }
+        persistActiveIds()
+        // Keep legacy key in sync for debugging / old code paths.
+        updateCustomControlProfile(entry.layout.toJsonString())
+    }
+
+    /**
+     * Save layout from the editor.
+     * Built-in → new user profile (or update existing user with same name).
+     * User → overwrite.
+     */
+    fun saveEditedProfile(layout: ControlProfile, baseId: String?): ControlProfileEntry {
+        val kind = when (controlMode) {
+            OnScreenControlMode.MouseKeyboard -> ProfileKind.MouseKeyboard
+            else -> ProfileKind.Gamepad
+        }
+        val users = loadUserEntries().toMutableList()
+        val base = baseId?.let { findProfile(it) }
+        val entry = if (base != null && !base.builtIn) {
+            val updated = base.copy(name = layout.name.ifBlank { base.name }, layout = layout.copy(name = layout.name.ifBlank { base.name }))
+            val i = users.indexOfFirst { it.id == base.id }
+            if (i >= 0) users[i] = updated else users += updated
+            updated
+        } else {
+            val name = layout.name.ifBlank {
+                when {
+                    base != null -> "${base.name} (custom)"
+                    kind == ProfileKind.MouseKeyboard -> "Custom M/K"
+                    else -> "Custom Gamepad"
+                }
+            }
+            val created = ControlProfileEntry(
+                id = ControlProfiles.newUserId(),
+                name = name,
+                kind = kind,
+                builtIn = false,
+                layout = layout.copy(name = name),
+            )
+            users += created
+            created
+        }
+        saveUserEntries(users)
+        selectProfile(entry.id)
+        return entry
+    }
+
+    fun deleteUserProfile(id: String) {
+        val users = loadUserEntries().filter { it.id != id }
+        saveUserEntries(users)
+        if (activeGamepadProfileId == id) {
+            activeGamepadProfileId = ControlProfiles.ID_XBOX360
+        }
+        if (activeMkProfileId == id) {
+            activeMkProfileId = ControlProfiles.ID_MK_DEFAULT
+        }
+        persistActiveIds()
+    }
+
+    fun createMkProfile(name: String = "New layout"): ControlProfileEntry {
+        val layout = ControlProfiles.mouseKeyboard().copy(name = name)
+        return saveEditedProfile(layout, baseId = null)
+    }
+
+    fun resetActiveProfileToBuiltin() {
+        when (controlMode) {
+            OnScreenControlMode.Gamepad -> selectProfile(ControlProfiles.ID_XBOX360)
+            OnScreenControlMode.MouseKeyboard -> selectProfile(ControlProfiles.ID_MK_DEFAULT)
+            else -> {}
+        }
+    }
+
+    fun resetCustomControlProfile() = resetActiveProfileToBuiltin()
+
+    /** Profile to draw for the current mode, or null when Off / Keys. */
     fun activeControlProfile(): ControlProfile? = when (controlMode) {
         OnScreenControlMode.Off, OnScreenControlMode.Keys -> null
         OnScreenControlMode.Gamepad -> {
-            val parsed = ControlProfile.fromJsonString(customControlProfile)
-            if (parsed != null && parsed.elements.isNotEmpty()) parsed
-            else ControlProfile.defaultGamepad()
+            val e = findProfile(activeGamepadProfileId)
+            e?.layout ?: ControlProfiles.xbox360()
         }
         OnScreenControlMode.MouseKeyboard -> {
-            val parsed = ControlProfile.fromJsonString(customControlProfile)
-            if (parsed != null && parsed.elements.isNotEmpty()) parsed
-            else ControlProfile.defaultMouseKeyboard()
+            val e = findProfile(activeMkProfileId)
+            e?.layout ?: ControlProfiles.mouseKeyboard()
         }
     }
 
     /** True when empty screen area should move the mouse relatively (trackpad). */
-    val trackpadMode get() = controlMode == OnScreenControlMode.MouseKeyboard
+    val trackpadMode get() = controlMode == OnScreenControlMode.MouseKeyboard && trackpadEnabled
 
     fun updateLanguage(v: Language) { language = v; prefs.edit().putString("language", v.name).apply() }
     fun updateFps(v: Int) { fps = v; prefs.edit().putInt("fps", v).apply() }
