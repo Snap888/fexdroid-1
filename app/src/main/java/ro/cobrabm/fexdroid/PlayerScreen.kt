@@ -92,6 +92,20 @@ fun PlayerScreen() {
     var keyboardShown by remember { mutableStateOf(false) }
     var mouseCaptured by remember { mutableStateOf(false) }
 
+    fun syncOverlayOpen(
+        menu: Boolean = menuOpen,
+        log: Boolean = logOpen,
+        stop: Boolean = confirmStop,
+        edit: Boolean = editingControls,
+    ) {
+        InputSurfaceView.overlayOpen = menu || log || stop || edit
+    }
+
+    fun setMenuOpen(v: Boolean) {
+        menuOpen = v
+        syncOverlayOpen(menu = v)
+    }
+
     // Landscape + hidden system bars while the player is shown.
     DisposableEffect(Unit) {
         val prev = activity.requestedOrientation
@@ -109,15 +123,15 @@ fun PlayerScreen() {
         }
     }
 
-    androidx.compose.runtime.SideEffect { InputSurfaceView.overlayOpen = menuOpen || logOpen || confirmStop || editingControls }
+    androidx.compose.runtime.SideEffect { syncOverlayOpen() }
     DisposableEffect(Unit) { onDispose { InputSurfaceView.overlayOpen = false } }
 
     BackHandler {
         when {
-            editingControls -> editingControls = false
-            logOpen -> logOpen = false
-            menuOpen -> menuOpen = false
-            state is SessionState.Running || state is SessionState.Starting -> menuOpen = true
+            editingControls -> { editingControls = false; syncOverlayOpen(edit = false) }
+            logOpen -> { logOpen = false; syncOverlayOpen(log = false) }
+            menuOpen -> setMenuOpen(false)
+            state is SessionState.Running || state is SessionState.Starting -> setMenuOpen(true)
             else -> GameSession.stop()
         }
     }
@@ -190,7 +204,7 @@ fun PlayerScreen() {
                     Modifier.align(Alignment.CenterStart).padding(start = edge))
                 // The menu button would sit on the keys: it is the first of them.
                 OnScreenKeys.Strip("right", remember(AppSettings.keysRight) { listOf(OnScreenKeys.Menu) + OnScreenKeys.parse(AppSettings.keysRight) },
-                    Modifier.align(Alignment.CenterEnd).padding(end = edge), onMenu = { menuOpen = !menuOpen })
+                    Modifier.align(Alignment.CenterEnd).padding(end = edge), onMenu = { setMenuOpen(!menuOpen) })
             }
             runningInput && !hideControls && (mode == OnScreenControlMode.Gamepad || mode == OnScreenControlMode.MouseKeyboard) -> {
                 val profile = remember(mode, AppSettings.customControlProfile) {
@@ -198,7 +212,7 @@ fun PlayerScreen() {
                 }
                 OnScreenControls.Overlay(
                     profile = profile,
-                    onMenu = { menuOpen = !menuOpen },
+                    onMenu = { setMenuOpen(!menuOpen) },
                 )
             }
         }
@@ -209,7 +223,7 @@ fun PlayerScreen() {
                     .align(Alignment.CenterEnd)
                     .displayCutoutPadding()
                     .zIndex(8f),
-            ) { menuOpen = !menuOpen }
+            ) { setMenuOpen(!menuOpen) }
         }
 
         // Dim scrim + menu above controls (zIndex high so hits reach GameMenu).
@@ -219,7 +233,7 @@ fun PlayerScreen() {
                     .fillMaxSize()
                     .zIndex(10f)
                     .background(Color.Black.copy(alpha = 0.35f))
-                    .clickable { menuOpen = false },
+                    .clickable { setMenuOpen(false) },
             )
         }
         AnimatedVisibility(
@@ -235,14 +249,14 @@ fun PlayerScreen() {
                 AppSettings.controlMode == OnScreenControlMode.MouseKeyboard
             GameMenu(
                 keyboardShown = keyboardShown, mouseCaptured = mouseCaptured,
-                onKeyboard = { menuOpen = false; toggleKeyboard() },
-                onKeys = { menuOpen = false; AppSettings.cycleControlMode() },
-                onMouse = { menuOpen = false; toggleMouse() },
-                onLog = { menuOpen = false; logOpen = true },
-                onEditControls = if (canEdit) {{ menuOpen = false; editingControls = true }} else null,
-                onMinimize = { menuOpen = false; GameSession.playerVisible = false },
-                onStop = { menuOpen = false; confirmStop = true },
-                onClose = { menuOpen = false },
+                onKeyboard = { setMenuOpen(false); toggleKeyboard() },
+                onKeys = { setMenuOpen(false); AppSettings.cycleControlMode() },
+                onMouse = { setMenuOpen(false); toggleMouse() },
+                onLog = { setMenuOpen(false); logOpen = true; syncOverlayOpen(menu = false, log = true) },
+                onEditControls = if (canEdit) {{ setMenuOpen(false); editingControls = true; syncOverlayOpen(menu = false, edit = true) }} else null,
+                onMinimize = { setMenuOpen(false); GameSession.playerVisible = false },
+                onStop = { setMenuOpen(false); confirmStop = true; syncOverlayOpen(menu = false, stop = true) },
+                onClose = { setMenuOpen(false) },
             )
         }
 
@@ -256,24 +270,24 @@ fun PlayerScreen() {
                 initial = initial,
                 onSave = { profile ->
                     AppSettings.updateCustomControlProfile(profile.toJsonString())
-                    // Reload overlay with the saved profile while staying in the current mode.
                     OnScreenControls.loadProfile(profile)
                     editingControls = false
+                    syncOverlayOpen(edit = false)
                 },
-                onCancel = { editingControls = false },
+                onCancel = { editingControls = false; syncOverlayOpen(edit = false) },
             )
         }
 
-        if (logOpen) LogPanel { logOpen = false }
+        if (logOpen) LogPanel { logOpen = false; syncOverlayOpen(log = false) }
     }
 
     if (confirmStop) {
         AlertDialog(
-            onDismissRequest = { confirmStop = false },
+            onDismissRequest = { confirmStop = false; syncOverlayOpen(stop = false) },
             title = { Text(str(R.string.player_stop_question)) },
             text = { Text(str(R.string.player_stop_warning)) },
-            confirmButton = { Button(onClick = { confirmStop = false; GameSession.stop() }) { Text(str(R.string.stop)) } },
-            dismissButton = { TextButton(onClick = { confirmStop = false }) { Text(str(R.string.cancel)) } },
+            confirmButton = { Button(onClick = { confirmStop = false; syncOverlayOpen(stop = false); GameSession.stop() }) { Text(str(R.string.stop)) } },
+            dismissButton = { TextButton(onClick = { confirmStop = false; syncOverlayOpen(stop = false) }) { Text(str(R.string.cancel)) } },
         )
     }
 }
