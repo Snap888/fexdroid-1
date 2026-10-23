@@ -5,27 +5,35 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Button
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
@@ -47,14 +55,15 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlin.math.roundToInt
 
 /**
- * Full-screen editor for a [ControlProfile]: drag elements, tune scale/opacity/actions,
- * add or remove buttons, sticks and D-pads. [onSave] receives the finished profile.
+ * Winlator-style layout editor: full-screen grid, compact top toolbar,
+ * floating properties panel that does not cover the whole canvas.
  */
 @Composable
 fun ControlEditorScreen(
@@ -69,39 +78,24 @@ fun ControlEditorScreen(
     }
     var selectedId by remember { mutableStateOf<String?>(null) }
     var name by remember { mutableStateOf(initial.name.ifBlank { "Custom" }) }
+    var propsOpen by remember { mutableStateOf(false) }
+    var addMenuOpen by remember { mutableStateOf(false) }
     val selected = elements.firstOrNull { it.id == selectedId }
 
-    Column(Modifier.fillMaxSize().background(Color(0xFF121212))) {
-        // —— top bar ——
-        Surface(tonalElevation = 2.dp) {
-            Row(
-                Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 4.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                TextButton(onClick = onCancel) { Text(str(R.string.cancel)) }
-                Text(
-                    str(R.string.editor_title),
-                    style = MaterialTheme.typography.titleMedium,
-                    modifier = Modifier.weight(1f),
-                    textAlign = TextAlign.Center,
-                )
-                Button(onClick = {
-                    onSave(ControlProfile(name = name.trim().ifEmpty { "Custom" }, elements = elements.toList()))
-                }) { Text(str(R.string.editor_save)) }
-            }
-        }
+    val barBg = Color(0xE61C1C22)
+    val accent = Color(0xFF4FC3F7)
+    val gridBg = Color(0xFF0E0E12)
 
-        // —— canvas ——
-        BoxWithConstraints(
-            Modifier.weight(1f).fillMaxWidth().padding(4.dp),
-        ) {
+    Box(Modifier.fillMaxSize().background(gridBg)) {
+        // —— canvas (full screen) ——
+        BoxWithConstraints(Modifier.fillMaxSize()) {
             val w = constraints.maxWidth.toFloat().coerceAtLeast(1f)
             val h = constraints.maxHeight.toFloat().coerceAtLeast(1f)
             val density = LocalDensity.current.density
-            // Grid
+
             Canvas(Modifier.fillMaxSize()) {
-                val step = 40.dp.toPx()
-                val grid = Color.White.copy(alpha = 0.06f)
+                val step = 28.dp.toPx()
+                val grid = Color.White.copy(alpha = 0.055f)
                 var x = 0f
                 while (x < size.width) {
                     drawLine(grid, Offset(x, 0f), Offset(x, size.height), strokeWidth = 1f)
@@ -112,92 +106,255 @@ fun ControlEditorScreen(
                     drawLine(grid, Offset(0f, y), Offset(size.width, y), strokeWidth = 1f)
                     y += step
                 }
+                // Center crosshair
+                val cx = size.width / 2f
+                val cy = size.height / 2f
+                val cross = Color(0xE0E53935)
+                drawLine(cross, Offset(cx, 0f), Offset(cx, size.height), strokeWidth = 1.5f)
+                drawLine(cross, Offset(0f, cy), Offset(size.width, cy), strokeWidth = 1.5f)
             }
+
+            // Tap empty area → deselect / close props
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .pointerInput(Unit) {
+                        detectTapGestures {
+                            selectedId = null
+                            propsOpen = false
+                        }
+                    },
+            )
+
             for (el in elements) {
                 if (!el.visible) continue
                 EditorElement(
                     el = el,
                     selected = el.id == selectedId,
+                    accent = accent,
                     winW = w,
                     winH = h,
                     density = density,
-                    onSelect = { selectedId = el.id },
+                    onSelect = {
+                        selectedId = el.id
+                        // Do not auto-open props — free placement first
+                    },
                     onMove = { nx, ny ->
                         el.x = nx.coerceIn(0.02f, 0.98f)
                         el.y = ny.coerceIn(0.02f, 0.98f)
-                        // Force recomposition of list
                         val i = elements.indexOfFirst { it.id == el.id }
                         if (i >= 0) elements[i] = el
                     },
                 )
             }
+
             if (elements.isEmpty()) {
                 Text(
                     str(R.string.editor_empty),
-                    color = Color.White.copy(alpha = 0.5f),
-                    modifier = Modifier.align(Alignment.Center).padding(24.dp),
+                    color = Color.White.copy(alpha = 0.4f),
+                    modifier = Modifier.align(Alignment.Center).padding(32.dp),
                     textAlign = TextAlign.Center,
+                    fontSize = 14.sp,
                 )
             }
         }
 
-        // —— bottom tools ——
-        Surface(tonalElevation = 3.dp) {
-            Column(Modifier.fillMaxWidth().padding(8.dp)) {
-                Row(
-                    Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically,
+        // —— compact top toolbar (Winlator-style) ——
+        Surface(
+            modifier = Modifier
+                .align(Alignment.TopCenter)
+                .padding(top = 10.dp),
+            shape = RoundedCornerShape(16.dp),
+            color = barBg,
+            shadowElevation = 6.dp,
+        ) {
+            Row(
+                Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(2.dp),
+            ) {
+                // Profile / name
+                Column(
+                    Modifier
+                        .widthIn(max = 88.dp)
+                        .clickable { propsOpen = false; selectedId = null }
+                        .padding(horizontal = 8.dp, vertical = 4.dp),
                 ) {
-                    OutlinedButton(onClick = {
-                        val b = ControlElement.Button(
-                            x = 0.5f, y = 0.5f, label = "A",
-                            action = ControlAction.fromAndroidKey(android.view.KeyEvent.KEYCODE_A)
-                                ?: ControlAction.PadButton(ControlAction.BTN_A),
-                        )
-                        elements += b
-                        selectedId = b.id
-                    }) { Text(str(R.string.editor_add_button)) }
-                    OutlinedButton(onClick = {
-                        val s = ControlElement.Stick(x = 0.2f, y = 0.7f)
-                        elements += s
-                        selectedId = s.id
-                    }) { Text(str(R.string.editor_add_stick)) }
-                    OutlinedButton(onClick = {
-                        val d = ControlElement.DPad(x = 0.2f, y = 0.4f)
-                        elements += d
-                        selectedId = d.id
-                    }) { Text(str(R.string.editor_add_dpad)) }
-                    if (selected != null) {
-                        TextButton(onClick = {
-                            elements.removeAll { it.id == selectedId }
-                            selectedId = null
-                        }) { Text(str(R.string.editor_delete), color = MaterialTheme.colorScheme.error) }
-                    }
-                }
-                if (selected != null) {
-                    HorizontalDivider(Modifier.padding(vertical = 8.dp))
-                    ElementProperties(
-                        el = selected,
-                        onChange = { updated ->
-                            val i = elements.indexOfFirst { it.id == updated.id }
-                            if (i >= 0) elements[i] = updated
-                        },
-                    )
-                } else {
-                    OutlinedTextField(
-                        value = name,
-                        onValueChange = { name = it },
-                        label = { Text(str(R.string.editor_profile_name)) },
-                        singleLine = true,
-                        modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                    Text(
+                        str(R.string.editor_profile_name).uppercase(),
+                        color = Color.White.copy(alpha = 0.45f),
+                        fontSize = 9.sp,
+                        maxLines = 1,
                     )
                     Text(
-                        str(R.string.editor_hint),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(top = 4.dp),
+                        name.ifBlank { "—" },
+                        color = accent,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.SemiBold,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
                     )
+                }
+
+                ToolbarDivider()
+
+                // Add
+                Box {
+                    IconButton(onClick = { addMenuOpen = true }, modifier = Modifier.size(40.dp)) {
+                        Text("+", color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Light)
+                    }
+                    DropdownMenu(expanded = addMenuOpen, onDismissRequest = { addMenuOpen = false }) {
+                        DropdownMenuItem(
+                            text = { Text(str(R.string.editor_add_button)) },
+                            onClick = {
+                                addMenuOpen = false
+                                val b = ControlElement.Button(
+                                    x = 0.5f, y = 0.5f, label = "A",
+                                    action = ControlAction.fromAndroidKey(android.view.KeyEvent.KEYCODE_A)
+                                        ?: ControlAction.PadButton(ControlAction.BTN_A),
+                                )
+                                elements += b
+                                selectedId = b.id
+                            },
+                        )
+                        DropdownMenuItem(
+                            text = { Text(str(R.string.editor_add_stick)) },
+                            onClick = {
+                                addMenuOpen = false
+                                val s = ControlElement.Stick(x = 0.22f, y = 0.72f)
+                                elements += s
+                                selectedId = s.id
+                            },
+                        )
+                        DropdownMenuItem(
+                            text = { Text(str(R.string.editor_add_dpad)) },
+                            onClick = {
+                                addMenuOpen = false
+                                val d = ControlElement.DPad(x = 0.22f, y = 0.42f)
+                                elements += d
+                                selectedId = d.id
+                            },
+                        )
+                    }
+                }
+
+                // Delete selected
+                IconButton(
+                    onClick = {
+                        if (selectedId != null) {
+                            elements.removeAll { it.id == selectedId }
+                            selectedId = null
+                            propsOpen = false
+                        }
+                    },
+                    enabled = selectedId != null,
+                    modifier = Modifier.size(40.dp),
+                ) {
+                    Icon(
+                        AppIcons.Close,
+                        contentDescription = str(R.string.editor_delete),
+                        tint = if (selectedId != null) Color(0xFFFF8A80) else Color.White.copy(alpha = 0.25f),
+                        modifier = Modifier.size(20.dp),
+                    )
+                }
+
+                ToolbarDivider()
+
+                // Properties (gear)
+                IconButton(
+                    onClick = {
+                        if (selected != null || !propsOpen) propsOpen = !propsOpen
+                    },
+                    modifier = Modifier.size(40.dp),
+                ) {
+                    Icon(
+                        AppIcons.Settings,
+                        contentDescription = str(R.string.editor_action),
+                        tint = if (propsOpen) accent else Color.White.copy(alpha = 0.85f),
+                        modifier = Modifier.size(20.dp),
+                    )
+                }
+
+                ToolbarDivider()
+
+                // Cancel
+                TextButton(onClick = onCancel) {
+                    Text(str(R.string.cancel), color = Color.White.copy(alpha = 0.7f), fontSize = 13.sp)
+                }
+                // Save
+                TextButton(
+                    onClick = {
+                        onSave(
+                            ControlProfile(
+                                name = name.trim().ifEmpty { "Custom" },
+                                elements = elements.toList(),
+                            ),
+                        )
+                    },
+                ) {
+                    Text(str(R.string.editor_save), color = accent, fontWeight = FontWeight.SemiBold, fontSize = 13.sp)
+                }
+            }
+        }
+
+        // —— floating properties panel (does not block full canvas) ——
+        if (propsOpen) {
+            Surface(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(top = 64.dp, end = 12.dp)
+                    .widthIn(max = 300.dp)
+                    .fillMaxHeight(0.82f),
+                shape = RoundedCornerShape(14.dp),
+                color = barBg,
+                shadowElevation = 8.dp,
+            ) {
+                Column(
+                    Modifier
+                        .verticalScroll(rememberScrollState())
+                        .padding(12.dp),
+                ) {
+                    Row(
+                        Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        Text(
+                            if (selected != null) str(R.string.editor_action) else str(R.string.editor_profile_name),
+                            color = Color.White.copy(alpha = 0.9f),
+                            fontWeight = FontWeight.Medium,
+                            fontSize = 13.sp,
+                            modifier = Modifier.weight(1f),
+                        )
+                        TextButton(onClick = { propsOpen = false }) {
+                            Text(str(R.string.close), fontSize = 12.sp)
+                        }
+                    }
+                    HorizontalDivider(color = Color.White.copy(alpha = 0.1f), modifier = Modifier.padding(bottom = 8.dp))
+
+                    if (selected != null) {
+                        ElementProperties(
+                            el = selected,
+                            onChange = { updated ->
+                                val i = elements.indexOfFirst { it.id == updated.id }
+                                if (i >= 0) elements[i] = updated
+                            },
+                        )
+                    } else {
+                        // Profile name when nothing selected
+                        androidx.compose.material3.OutlinedTextField(
+                            value = name,
+                            onValueChange = { name = it },
+                            label = { Text(str(R.string.editor_profile_name)) },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        Text(
+                            str(R.string.editor_hint),
+                            color = Color.White.copy(alpha = 0.45f),
+                            fontSize = 12.sp,
+                            modifier = Modifier.padding(top = 8.dp),
+                        )
+                    }
                 }
             }
         }
@@ -205,9 +362,21 @@ fun ControlEditorScreen(
 }
 
 @Composable
+private fun ToolbarDivider() {
+    Box(
+        Modifier
+            .padding(horizontal = 2.dp)
+            .width(1.dp)
+            .height(22.dp)
+            .background(Color.White.copy(alpha = 0.15f)),
+    )
+}
+
+@Composable
 private fun EditorElement(
     el: ControlElement,
     selected: Boolean,
+    accent: Color,
     winW: Float,
     winH: Float,
     density: Float,
@@ -224,7 +393,21 @@ private fun EditorElement(
     var dragX by remember(el.id) { mutableFloatStateOf(0f) }
     var dragY by remember(el.id) { mutableFloatStateOf(0f) }
 
-    val borderColor = if (selected) MaterialTheme.colorScheme.primary else Color.White.copy(alpha = 0.35f)
+    val borderColor = if (selected) accent else Color.White.copy(alpha = 0.35f)
+    val label = when (el) {
+        is ControlElement.Button -> el.label.ifBlank {
+            when (val a = el.action) {
+                is ControlAction.Key -> a.label.ifBlank { "KEY" }
+                is ControlAction.KeyCombo -> a.xKeycodes.joinToString("+")
+                is ControlAction.PadButton -> "BTN"
+                ControlAction.Menu -> "☰"
+                else -> "NONE"
+            }
+        }
+        is ControlElement.Stick -> "○"
+        is ControlElement.DPad -> "✛"
+    }
+
     Box(
         Modifier
             .offset {
@@ -235,7 +418,7 @@ private fun EditorElement(
             }
             .size(sizeDp)
             .border(if (selected) 2.dp else 1.dp, borderColor, CircleShape)
-            .background(Color.White.copy(alpha = el.opacity * 0.35f), CircleShape)
+            .background(Color.White.copy(alpha = el.opacity * 0.22f), CircleShape)
             .pointerInput(el.id) {
                 detectDragGestures(
                     onDragStart = { onSelect() },
@@ -256,120 +439,141 @@ private fun EditorElement(
             .clickable { onSelect() },
         contentAlignment = Alignment.Center,
     ) {
-        when (el) {
-            is ControlElement.Button -> Text(
-                el.label.ifEmpty { "•" },
-                color = Color.White,
-                fontSize = if (el.label.length > 2) 11.sp else 14.sp,
-                fontWeight = FontWeight.Medium,
-                maxLines = 1,
-            )
-            is ControlElement.Stick -> Canvas(Modifier.fillMaxSize().padding(8.dp)) {
-                drawCircle(Color.White.copy(alpha = 0.5f), style = Stroke(2.dp.toPx()))
-                drawCircle(Color.White.copy(alpha = 0.55f), radius = size.minDimension * 0.2f)
+        if (el is ControlElement.Stick || el is ControlElement.DPad) {
+            Canvas(Modifier.fillMaxSize()) {
+                val r = size.minDimension / 2f
+                drawCircle(Color.White.copy(alpha = 0.12f), radius = r)
+                drawCircle(borderColor.copy(alpha = 0.7f), radius = r, style = Stroke(2.dp.toPx()))
+                if (el is ControlElement.Stick) {
+                    drawCircle(Color.White.copy(alpha = 0.35f), radius = r * 0.35f)
+                }
             }
-            is ControlElement.DPad -> Text("D-pad", color = Color.White, fontSize = 11.sp)
         }
+        Text(
+            label,
+            color = if (selected) accent else Color.White.copy(alpha = 0.9f),
+            fontSize = if (label.length > 3) 11.sp else 14.sp,
+            fontWeight = FontWeight.Medium,
+            textAlign = TextAlign.Center,
+            maxLines = 1,
+        )
     }
 }
 
 @Composable
 private fun ElementProperties(el: ControlElement, onChange: (ControlElement) -> Unit) {
-    Column(
-        Modifier.fillMaxWidth().heightIn(max = 220.dp).verticalScroll(rememberScrollState()),
-        verticalArrangement = Arrangement.spacedBy(6.dp),
-    ) {
-        Text(
-            when (el) {
-                is ControlElement.Button -> str(R.string.editor_type_button)
-                is ControlElement.Stick -> str(R.string.editor_type_stick)
-                is ControlElement.DPad -> str(R.string.editor_type_dpad)
-            },
-            style = MaterialTheme.typography.labelLarge,
-            color = MaterialTheme.colorScheme.primary,
-        )
+    Text(
         when (el) {
-            is ControlElement.Button -> {
-                OutlinedTextField(
-                    value = el.label,
-                    onValueChange = { onChange(el.copy(label = it.take(8))) },
-                    label = { Text(str(R.string.editor_label)) },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
+            is ControlElement.Button -> str(R.string.editor_type_button)
+            is ControlElement.Stick -> str(R.string.editor_type_stick)
+            is ControlElement.DPad -> str(R.string.editor_type_dpad)
+        },
+        style = MaterialTheme.typography.labelLarge,
+        color = Color.White.copy(alpha = 0.7f),
+    )
+    Spacer(Modifier.height(6.dp))
+
+    if (el is ControlElement.Button) {
+        androidx.compose.material3.OutlinedTextField(
+            value = el.label,
+            onValueChange = { onChange(el.copy(label = it.take(8))) },
+            label = { Text(str(R.string.editor_label)) },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Spacer(Modifier.height(8.dp))
+        Text(str(R.string.editor_action), color = Color.White.copy(alpha = 0.6f), fontSize = 12.sp)
+        ActionChips(current = el.action) { a -> onChange(el.copy(action = a)) }
+        val sticky = (el.action as? ControlAction.Key)?.sticky == true
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(str(R.string.editor_toggle), modifier = Modifier.weight(1f), color = Color.White.copy(alpha = 0.85f))
+            Switch(
+                checked = sticky,
+                onCheckedChange = { on ->
+                    val a = el.action
+                    if (a is ControlAction.Key) onChange(el.copy(action = a.copy(sticky = on)))
+                },
+                enabled = el.action is ControlAction.Key,
+            )
+        }
+    }
+
+    if (el is ControlElement.Stick) {
+        Text(str(R.string.editor_stick_mode), color = Color.White.copy(alpha = 0.6f), fontSize = 12.sp)
+        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            for (m in StickMode.entries) {
+                FilterChip(
+                    selected = el.mode == m,
+                    onClick = { onChange(el.copy(mode = m)) },
+                    label = { Text(m.name) },
                 )
-                Text(str(R.string.editor_action), style = MaterialTheme.typography.bodySmall)
-                ActionChips(el.action) { onChange(el.copy(action = it)) }
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(str(R.string.editor_toggle), modifier = Modifier.weight(1f))
-                    Switch(el.toggle, onCheckedChange = { onChange(el.copy(toggle = it)) })
-                }
-            }
-            is ControlElement.Stick -> {
-                Text(str(R.string.editor_stick_mode), style = MaterialTheme.typography.bodySmall)
-                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    for (m in StickMode.entries) {
-                        FilterChip(
-                            selected = el.mode == m,
-                            onClick = { onChange(el.copy(mode = m)) },
-                            label = { Text(m.name) },
-                        )
-                    }
-                }
-                Text("${str(R.string.editor_deadzone)}: ${(el.deadzone * 100).roundToInt()}%")
-                Slider(
-                    value = el.deadzone,
-                    onValueChange = { onChange(el.copy(deadzone = it)) },
-                    valueRange = 0f..0.45f,
-                )
-                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                    FilterChip(
-                        selected = el.axisX == ControlAction.ABS_X,
-                        onClick = { onChange(el.copy(axisX = ControlAction.ABS_X, axisY = ControlAction.ABS_Y)) },
-                        label = { Text(str(R.string.editor_left_stick)) },
-                    )
-                    FilterChip(
-                        selected = el.axisX == ControlAction.ABS_RX,
-                        onClick = { onChange(el.copy(axisX = ControlAction.ABS_RX, axisY = ControlAction.ABS_RY)) },
-                        label = { Text(str(R.string.editor_right_stick)) },
-                    )
-                }
-            }
-            is ControlElement.DPad -> {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(str(R.string.editor_eight_way), modifier = Modifier.weight(1f))
-                    Switch(el.eightWay, onCheckedChange = { onChange(el.copy(eightWay = it)) })
-                }
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Text(str(R.string.editor_use_hat), modifier = Modifier.weight(1f))
-                    Switch(el.useHat, onCheckedChange = { onChange(el.copy(useHat = it)) })
-                }
             }
         }
-        Text("${str(R.string.editor_scale)}: ${"%.2f".format(el.scale)}")
+        Text("${str(R.string.editor_deadzone)}: ${"%.2f".format(el.deadzone)}", color = Color.White.copy(alpha = 0.85f))
         Slider(
-            value = el.scale,
-            onValueChange = { v ->
-                when (el) {
-                    is ControlElement.Button -> onChange(el.copy(scale = v))
-                    is ControlElement.Stick -> onChange(el.copy(scale = v))
-                    is ControlElement.DPad -> onChange(el.copy(scale = v))
-                }
-            },
-            valueRange = 0.4f..2.2f,
+            value = el.deadzone,
+            onValueChange = { onChange(el.copy(deadzone = it)) },
+            valueRange = 0f..0.45f,
         )
-        Text("${str(R.string.editor_opacity)}: ${(el.opacity * 100).roundToInt()}%")
-        Slider(
-            value = el.opacity,
-            onValueChange = { v ->
-                when (el) {
-                    is ControlElement.Button -> onChange(el.copy(opacity = v))
-                    is ControlElement.Stick -> onChange(el.copy(opacity = v))
-                    is ControlElement.DPad -> onChange(el.copy(opacity = v))
-                }
-            },
-            valueRange = 0.15f..1f,
-        )
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            FilterChip(
+                selected = el.axisX == ControlAction.ABS_X,
+                onClick = {
+                    onChange(el.copy(axisX = ControlAction.ABS_X, axisY = ControlAction.ABS_Y))
+                },
+                label = { Text(str(R.string.editor_left_stick)) },
+            )
+            FilterChip(
+                selected = el.axisX == ControlAction.ABS_RX,
+                onClick = {
+                    onChange(el.copy(axisX = ControlAction.ABS_RX, axisY = ControlAction.ABS_RY))
+                },
+                label = { Text(str(R.string.editor_right_stick)) },
+            )
+        }
     }
+
+    if (el is ControlElement.DPad) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(str(R.string.editor_eight_way), modifier = Modifier.weight(1f), color = Color.White.copy(alpha = 0.85f))
+            Switch(checked = el.eightWay, onCheckedChange = { onChange(el.copy(eightWay = it)) })
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(str(R.string.editor_use_hat), modifier = Modifier.weight(1f), color = Color.White.copy(alpha = 0.85f))
+            Switch(checked = el.useHat, onCheckedChange = { onChange(el.copy(useHat = it)) })
+        }
+    }
+
+    Text(
+        "${str(R.string.editor_scale)}: ${(el.scale * 100).roundToInt()}%",
+        color = Color.White.copy(alpha = 0.85f),
+    )
+    Slider(
+        value = el.scale,
+        onValueChange = { v ->
+            when (el) {
+                is ControlElement.Button -> onChange(el.copy(scale = v))
+                is ControlElement.Stick -> onChange(el.copy(scale = v))
+                is ControlElement.DPad -> onChange(el.copy(scale = v))
+            }
+        },
+        valueRange = 0.4f..2.2f,
+    )
+    Text(
+        "${str(R.string.editor_opacity)}: ${(el.opacity * 100).roundToInt()}%",
+        color = Color.White.copy(alpha = 0.85f),
+    )
+    Slider(
+        value = el.opacity,
+        onValueChange = { v ->
+            when (el) {
+                is ControlElement.Button -> onChange(el.copy(opacity = v))
+                is ControlElement.Stick -> onChange(el.copy(opacity = v))
+                is ControlElement.DPad -> onChange(el.copy(opacity = v))
+            }
+        },
+        valueRange = 0.15f..1f,
+    )
 }
 
 @Composable
@@ -384,7 +588,6 @@ private fun ActionChips(current: ControlAction, onPick: (ControlAction) -> Unit)
     }
     val presets = remember {
         listOf(
-            // Keyboard
             key("Esc", android.view.KeyEvent.KEYCODE_ESCAPE),
             key("Tab", android.view.KeyEvent.KEYCODE_TAB),
             key("Space", android.view.KeyEvent.KEYCODE_SPACE),
@@ -400,20 +603,22 @@ private fun ActionChips(current: ControlAction, onPick: (ControlAction) -> Unit)
             key("E", android.view.KeyEvent.KEYCODE_E),
             key("R", android.view.KeyEvent.KEYCODE_R),
             key("F", android.view.KeyEvent.KEYCODE_F),
-            // Mouse
-            "LMB" to ControlAction.MouseButton(1),
-            "MMB" to ControlAction.MouseButton(2),
-            "RMB" to ControlAction.MouseButton(3),
-            // Combos
+            key("1", android.view.KeyEvent.KEYCODE_1),
+            key("2", android.view.KeyEvent.KEYCODE_2),
+            key("3", android.view.KeyEvent.KEYCODE_3),
+            key("4", android.view.KeyEvent.KEYCODE_4),
+            key("I", android.view.KeyEvent.KEYCODE_I),
+            key("M", android.view.KeyEvent.KEYCODE_M),
             combo("Ctrl+C", listOf(android.view.KeyEvent.KEYCODE_CTRL_LEFT, android.view.KeyEvent.KEYCODE_C)),
             combo("Ctrl+V", listOf(android.view.KeyEvent.KEYCODE_CTRL_LEFT, android.view.KeyEvent.KEYCODE_V)),
-            combo("Ctrl+Z", listOf(android.view.KeyEvent.KEYCODE_CTRL_LEFT, android.view.KeyEvent.KEYCODE_Z)),
             combo("Alt+Tab", listOf(android.view.KeyEvent.KEYCODE_ALT_LEFT, android.view.KeyEvent.KEYCODE_TAB)),
-            // Gamepad (still useful in mixed layouts)
-            "Pad A" to ControlAction.PadButton(ControlAction.BTN_A),
-            "Pad B" to ControlAction.PadButton(ControlAction.BTN_B),
-            "Pad X" to ControlAction.PadButton(ControlAction.BTN_X),
-            "Pad Y" to ControlAction.PadButton(ControlAction.BTN_Y),
+            "LMB" to ControlAction.MouseButton(1),
+            "RMB" to ControlAction.MouseButton(3),
+            "MMB" to ControlAction.MouseButton(2),
+            "A" to ControlAction.PadButton(ControlAction.BTN_A),
+            "B" to ControlAction.PadButton(ControlAction.BTN_B),
+            "X" to ControlAction.PadButton(ControlAction.BTN_X),
+            "Y" to ControlAction.PadButton(ControlAction.BTN_Y),
             "LB" to ControlAction.PadButton(ControlAction.BTN_TL),
             "RB" to ControlAction.PadButton(ControlAction.BTN_TR),
             "Start" to ControlAction.PadButton(ControlAction.BTN_START),
@@ -422,29 +627,55 @@ private fun ActionChips(current: ControlAction, onPick: (ControlAction) -> Unit)
             "—" to ControlAction.None,
         )
     }
-    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-        for ((label, action) in presets) {
-            val selected = when {
-                action is ControlAction.PadButton && current is ControlAction.PadButton ->
-                    action.code == current.code
-                action is ControlAction.Key && current is ControlAction.Key ->
-                    action.xKeycode == current.xKeycode && action.sticky == current.sticky
-                action is ControlAction.MouseButton && current is ControlAction.MouseButton ->
-                    action.button == current.button
-                action is ControlAction.KeyCombo && current is ControlAction.KeyCombo ->
-                    action.xKeycodes == current.xKeycodes
-                else -> action == current
+    Column {
+        Text(
+            currentLabel(current),
+            color = Color(0xFF4FC3F7),
+            fontSize = 12.sp,
+            modifier = Modifier.padding(bottom = 4.dp),
+        )
+        Row(
+            Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState())
+                .heightIn(max = 120.dp),
+            horizontalArrangement = Arrangement.spacedBy(4.dp),
+        ) {
+            // Wrap chips in a flow-like double row via two rows is heavy; single scroll row is fine
+            for ((label, action) in presets) {
+                val sel = actionMatches(current, action)
+                FilterChip(
+                    selected = sel,
+                    onClick = { onPick(action) },
+                    label = { Text(label, fontSize = 12.sp) },
+                )
             }
-            FilterChip(
-                selected = selected,
-                onClick = { onPick(action) },
-                label = { Text(label, maxLines = 1) },
-            )
         }
     }
 }
 
-/** Deep-enough copy so the editor does not mutate the saved profile until Save. */
+private fun currentLabel(a: ControlAction): String = when (a) {
+    is ControlAction.Key -> "KEY ${a.xKeycode}"
+    is ControlAction.KeyCombo -> a.xKeycodes.joinToString("+")
+    is ControlAction.PadButton -> "BTN ${a.code}"
+    is ControlAction.MouseButton -> "MOUSE ${a.button}"
+    is ControlAction.PadAxis -> "AXIS ${a.code}"
+    ControlAction.Menu -> "Menu"
+    ControlAction.ToggleTapButton -> "Tap toggle"
+    ControlAction.ToggleSwipeMode -> "Swipe toggle"
+    ControlAction.None -> "NONE"
+}
+
+private fun actionMatches(a: ControlAction, b: ControlAction): Boolean = when {
+    a is ControlAction.Key && b is ControlAction.Key -> a.xKeycode == b.xKeycode
+    a is ControlAction.KeyCombo && b is ControlAction.KeyCombo -> a.xKeycodes == b.xKeycodes
+    a is ControlAction.PadButton && b is ControlAction.PadButton -> a.code == b.code
+    a is ControlAction.MouseButton && b is ControlAction.MouseButton -> a.button == b.button
+    a is ControlAction.Menu && b is ControlAction.Menu -> true
+    a is ControlAction.None && b is ControlAction.None -> true
+    else -> a == b
+}
+
 private fun copyElement(e: ControlElement): ControlElement = when (e) {
     is ControlElement.Button -> e.copy()
     is ControlElement.Stick -> e.copy()
