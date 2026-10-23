@@ -451,10 +451,18 @@ object OnScreenControls {
                             }
                         }
                     } else if (AppSettings.trackpadMode) {
-                        // Empty area → trackpad (relative mouse).
-                        mine = true
-                        fingers[finger] = TRACK_ID
-                        trackLive[finger] = TrackLive(x, y)
+                        // Empty area → trackpad, but leave the right edge for the
+                        // floating menu button and top-right for the player menu card.
+                        val dm = android.content.res.Resources.getSystem().displayMetrics
+                        val w = dm.widthPixels.toFloat().coerceAtLeast(1f)
+                        val h = dm.heightPixels.toFloat().coerceAtLeast(1f)
+                        val edge = 72f * dm.density
+                        val onMenuChrome = x >= w - edge || (x >= w * 0.55f && y <= edge * 2.5f)
+                        if (!onMenuChrome) {
+                            mine = true
+                            fingers[finger] = TRACK_ID
+                            trackLive[finger] = TrackLive(x, y)
+                        }
                     }
                 }
             }
