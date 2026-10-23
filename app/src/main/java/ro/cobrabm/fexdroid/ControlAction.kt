@@ -22,6 +22,17 @@ sealed class ControlAction {
     }
 
     /**
+     * Chord of X keycodes pressed together (modifiers first, then the main key).
+     * Down: press in order; up: release in reverse.
+     */
+    data class KeyCombo(val xKeycodes: List<Int>) : ControlAction() {
+        init {
+            require(xKeycodes.isNotEmpty()) { "empty combo" }
+            require(xKeycodes.all { it > 0 })
+        }
+    }
+
+    /**
      * Linux key code of an Xbox 360 pad button (BTN_A = 0x130, …).
      * Sent on the virtual pad slot used by on-screen controls.
      */
@@ -50,6 +61,7 @@ sealed class ControlAction {
     fun toJson(): JSONObject = when (this) {
         is Key -> JSONObject().put("t", "key").put("c", xKeycode).put("s", sticky)
         is MouseButton -> JSONObject().put("t", "mouse").put("b", button)
+        is KeyCombo -> JSONObject().put("t", "combo").put("c", org.json.JSONArray(xKeycodes))
         is PadButton -> JSONObject().put("t", "padbtn").put("c", code)
         is PadAxis -> JSONObject().put("t", "padaxis").put("c", code).put("v", value)
         Menu -> JSONObject().put("t", "menu")
@@ -62,6 +74,15 @@ sealed class ControlAction {
         fun fromJson(o: JSONObject): ControlAction = when (o.optString("t")) {
             "key" -> Key(o.getInt("c"), o.optBoolean("s", false))
             "mouse" -> MouseButton(o.getInt("b"))
+            "combo" -> {
+                val arr = o.optJSONArray("c")
+                val codes = buildList {
+                    if (arr != null) for (i in 0 until arr.length()) {
+                        val c = arr.optInt(i, -1); if (c > 0) add(c)
+                    }
+                }
+                if (codes.isEmpty()) None else KeyCombo(codes)
+            }
             "padbtn" -> PadButton(o.getInt("c"))
             "padaxis" -> PadAxis(o.getInt("c"), o.getInt("v"))
             "menu" -> Menu
