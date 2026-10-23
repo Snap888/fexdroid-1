@@ -96,7 +96,7 @@ class InputSurfaceView(context: Context, private val xWidth: Int, private val xH
 
     /** A mouse event; [located]: its coordinates are this view's. */
     fun mouseEvent(e: MotionEvent, located: Boolean = true): Boolean {
-        if (!inputEnabled) return false
+        if (!inputEnabled || overlayOpen) return false
         lastMouseEventTime = e.eventTime
         if (located && e.actionMasked != MotionEvent.ACTION_SCROLL) { val (x, y) = toX(e.x, e.y); XInput.moveTo(x, y) }
         when (e.actionMasked) {
@@ -178,6 +178,8 @@ class InputSurfaceView(context: Context, private val xWidth: Int, private val xH
     @SuppressLint("ClickableViewAccessibility")
     override fun onTouchEvent(e: MotionEvent): Boolean {
         if (!inputEnabled) return false
+        // App menus / editor own the touch stream (Compose), not the X picture.
+        if (overlayOpen) return false
         if (e.isFromSource(InputDevice.SOURCE_MOUSE)) return mouseEvent(e)
         requestFocus()
         when (e.actionMasked) {
