@@ -167,6 +167,9 @@ fun SettingsScreen() {
                     }
                     OnScreenControlMode.MouseKeyboard -> {
                         Note(str(R.string.settings_control_mouse_keyboard_about))
+                        TextButton(onClick = { AppSettings.createMkProfile() }) {
+                            Text(str(R.string.player_profile_new))
+                        }
                         TextButton(onClick = { AppSettings.resetCustomControlProfile() }) {
                             Text(str(R.string.settings_control_mouse_keyboard_reset))
                         }
