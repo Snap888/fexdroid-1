@@ -50,6 +50,9 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Switch
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
@@ -207,8 +210,11 @@ fun PlayerScreen() {
                     Modifier.align(Alignment.CenterEnd).padding(end = edge), onMenu = { setMenuOpen(!menuOpen) })
             }
             runningInput && !hideControls && (mode == OnScreenControlMode.Gamepad || mode == OnScreenControlMode.MouseKeyboard) -> {
-                val profile = remember(mode, AppSettings.customControlProfile) {
-                    AppSettings.activeControlProfile() ?: if (mode == OnScreenControlMode.MouseKeyboard) ControlProfile.defaultMouseKeyboard() else ControlProfile.defaultGamepad()
+                val profileId = AppSettings.activeProfileId()
+                val profile = remember(mode, profileId, AppSettings.userProfilesJson) {
+                    AppSettings.activeControlProfile()
+                        ?: if (mode == OnScreenControlMode.MouseKeyboard) ControlProfiles.mouseKeyboard()
+                        else ControlProfiles.xbox360()
                 }
                 OnScreenControls.Overlay(
                     profile = profile,
@@ -269,8 +275,8 @@ fun PlayerScreen() {
             ControlEditorScreen(
                 initial = initial,
                 onSave = { profile ->
-                    AppSettings.updateCustomControlProfile(profile.toJsonString())
-                    OnScreenControls.loadProfile(profile)
+                    val entry = AppSettings.saveEditedProfile(profile, AppSettings.activeProfileId())
+                    OnScreenControls.loadProfile(entry.layout)
                     editingControls = false
                     syncOverlayOpen(edit = false)
                 },
@@ -345,6 +351,14 @@ private fun GameMenu(
                 OnScreenControlMode.Gamepad -> str(R.string.settings_control_gamepad)
                 OnScreenControlMode.MouseKeyboard -> str(R.string.settings_control_mouse_keyboard)
             })
+
+            // Profile picker (Gamepad / Mouse-Keyboard)
+            if (AppSettings.controlMode == OnScreenControlMode.Gamepad ||
+                AppSettings.controlMode == OnScreenControlMode.MouseKeyboard
+            ) {
+                ProfilePickerRow()
+            }
+
             if (onEditControls != null) {
                 MenuItem(
                     AppIcons.Build,
@@ -353,12 +367,99 @@ private fun GameMenu(
                     str(R.string.player_edit_controls_hint),
                 )
             }
+
+            // Trackpad toggle (Mouse/Keyboard only)
+            if (AppSettings.controlMode == OnScreenControlMode.MouseKeyboard) {
+                Row(
+                    Modifier
+                        .fillMaxWidth()
+                        .heightIn(min = 48.dp)
+                        .padding(horizontal = 16.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Icon(
+                        AppIcons.Mouse,
+                        null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Spacer(Modifier.width(16.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text(str(R.string.player_trackpad), style = MaterialTheme.typography.bodyLarge)
+                        Text(
+                            str(R.string.player_trackpad_hint),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                    }
+                    Switch(
+                        checked = AppSettings.trackpadEnabled,
+                        onCheckedChange = { AppSettings.updateTrackpadEnabled(it) },
+                    )
+                }
+            }
+
             MenuItem(AppIcons.Mouse, if (mouseCaptured) str(R.string.player_release_mouse) else str(R.string.player_capture_mouse),
                 onMouse, str(R.string.player_capture_hint))
             MenuItem(AppIcons.Log, str(R.string.player_log), onLog)
             MenuItem(AppIcons.Back, str(R.string.player_minimize), onMinimize, str(R.string.player_minimize_hint))
             HorizontalDivider(Modifier.padding(vertical = 4.dp))
             MenuItem(AppIcons.Stop, str(R.string.stop), onStop, tint = MaterialTheme.colorScheme.error)
+        }
+    }
+}
+
+@Composable
+private fun ProfilePickerRow() {
+    var expanded by remember { mutableStateOf(false) }
+    val profiles = AppSettings.profilesForCurrentMode()
+    val activeId = AppSettings.activeProfileId()
+    val active = profiles.firstOrNull { it.id == activeId } ?: profiles.firstOrNull()
+    Column(Modifier.padding(horizontal = 16.dp, vertical = 6.dp)) {
+        Text(
+            str(R.string.player_control_profile),
+            style = MaterialTheme.typography.labelMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        )
+        Box {
+            OutlinedButton(
+                onClick = { expanded = true },
+                modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+            ) {
+                Text(
+                    active?.name ?: "—",
+                    modifier = Modifier.weight(1f),
+                    maxLines = 1,
+                )
+                Text("▾")
+            }
+            DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
+                for (p in profiles) {
+                    DropdownMenuItem(
+                        text = {
+                            Text(
+                                buildString {
+                                    append(p.name)
+                                    if (p.builtIn) append("  ·")
+                                },
+                            )
+                        },
+                        onClick = {
+                            expanded = false
+                            AppSettings.selectProfile(p.id)
+                        },
+                    )
+                }
+                if (AppSettings.controlMode == OnScreenControlMode.MouseKeyboard) {
+                    HorizontalDivider()
+                    DropdownMenuItem(
+                        text = { Text(str(R.string.player_profile_new)) },
+                        onClick = {
+                            expanded = false
+                            AppSettings.createMkProfile()
+                        },
+                    )
+                }
+            }
         }
     }
 }
