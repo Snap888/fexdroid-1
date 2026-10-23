@@ -3,6 +3,14 @@
     <string name="advanced_game_running">A game is running</string>
     <string name="advanced_game_running_about">The X11 test screen uses the same virtual screen. Stop the game to open it.</string>
     <string name="advanced_stop_game">Stop the game</string>
+
+
+<string name="player_control_profile">Control profile</string>
+<string name="player_profile_new">+ New mouse/keyboard layout</string>
+<string name="player_trackpad">Trackpad</string>
+<string name="player_trackpad_hint">Empty screen moves the mouse</string>
+
+
     
     <string name="settings_control_mouse_keyboard">Mouse / Keyboard</string>
     <string name="settings_control_mouse_keyboard_about">On-screen keys, mouse buttons and combos. Empty area is a trackpad.</string>
