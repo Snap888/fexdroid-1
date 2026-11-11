@@ -23,6 +23,7 @@ class RootfsManifestVerifierTest {
             .put("archiveFormat", "tar.gz")
             .put("downloadUrl", "https://downloads.example.org/debian-rootfs.tar.gz")
             .put("archiveSizeBytes", 1234)
+            .put("expandedSizeBytes", 8192)
             .put("archiveSha256", "a".repeat(64))
             .toString()
             .toByteArray(Charsets.UTF_8)
@@ -40,7 +41,7 @@ class RootfsManifestVerifierTest {
         val result = RootfsManifestVerifier.verify(
             bytes, signed(bytes, pair),
             Base64.getEncoder().encodeToString(pair.public.encoded),
-            "anlr-test-key", 4096
+            "anlr-test-key", 4096, 16384
         )
         assertEquals("debian-arm64-test", result.releaseId)
         assertEquals("aarch64", result.architecture)
@@ -63,7 +64,7 @@ class RootfsManifestVerifierTest {
         val wrongArch = manifest("x86_64")
         assertThrows(IllegalArgumentException::class.java) {
             RootfsManifestVerifier.verify(
-                wrongArch, signed(wrongArch, pair), publicKey, "anlr-test-key", 4096
+                wrongArch, signed(wrongArch, pair), publicKey, "anlr-test-key", 4096, 16384
             )
         }
     }
@@ -74,7 +75,7 @@ class RootfsManifestVerifierTest {
         val tooLarge = manifest()
         assertThrows(IllegalArgumentException::class.java) {
             RootfsManifestVerifier.verify(
-                tooLarge, signed(tooLarge, pair), publicKey, "anlr-test-key", 100
+                tooLarge, signed(tooLarge, pair), publicKey, "anlr-test-key", 100, 16384
             )
         }
         val unsafe = JSONObject(String(manifest(), Charsets.UTF_8))
