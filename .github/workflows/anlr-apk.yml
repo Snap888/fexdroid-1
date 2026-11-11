@@ -31,8 +31,14 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
+      - name: Android SDK components
+        run: |
+          SDKM="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          yes | "$SDKM" --licenses >/dev/null
+          "$SDKM" --install "platform-tools" "ndk;29.0.14206865" "cmake;3.22.1" >/dev/null
+          "$SDKM" --install "platforms;android-37" >/dev/null || true
       - name: Build independent runtime APK
-        run: ./gradlew --no-daemon :runtime-app:testDebugUnitTest :runtime-app:assembleDebug
+        run: ./gradlew --no-daemon --stacktrace :runtime-app:testDebugUnitTest :runtime-app:assembleDebug
       - uses: actions/upload-artifact@v4
         with:
           name: anlr-debug-apk
