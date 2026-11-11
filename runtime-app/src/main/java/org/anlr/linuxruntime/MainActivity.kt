@@ -304,9 +304,12 @@ private fun TerminalScreen() {
 
 @Composable
 private fun DesktopScreen() {
-    var resolution by remember { mutableStateOf("1280×720") }
-    var scale by remember { mutableFloatStateOf(1f) }
-    var fullscreen by remember { mutableStateOf(true) }
+    val context = androidx.compose.ui.platform.LocalContext.current
+    val prefs = remember { context.getSharedPreferences("anlr_xfce_profile", 0) }
+    var resolution by remember { mutableStateOf(prefs.getString("resolution", "1280×720") ?: "1280×720") }
+    var scale by remember { mutableFloatStateOf(prefs.getFloat("scale", 1f)) }
+    var fullscreen by remember { mutableStateOf(prefs.getBoolean("fullscreen", true)) }
+    var saved by remember { mutableStateOf(false) }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(18.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         Text("Рабочий стол", style = MaterialTheme.typography.headlineSmall)
         Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)) {
@@ -329,7 +332,10 @@ private fun DesktopScreen() {
             Text("Полноэкранный режим")
             Switch(checked = fullscreen, onCheckedChange = { fullscreen = it })
         }
-        OutlinedButton(onClick = { }) { Text("Сохранить профиль XFCE") }
-        Text("Профиль: $resolution · масштаб ${(scale * 100).toInt()}% · ${if (fullscreen) "fullscreen" else "windowed"}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        OutlinedButton(onClick = {
+            prefs.edit().putString("resolution", resolution).putFloat("scale", scale).putBoolean("fullscreen", fullscreen).apply()
+            saved = true
+        }) { Text("Сохранить профиль XFCE") }
+        Text(if (saved) "Профиль сохранён на устройстве." else "Профиль: $resolution · масштаб ${(scale * 100).toInt()}% · ${if (fullscreen) "fullscreen" else "windowed"}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
