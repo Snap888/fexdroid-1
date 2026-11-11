@@ -46,6 +46,7 @@ class RootfsManifestVerifierTest {
         assertEquals("debian-arm64-test", result.releaseId)
         assertEquals("aarch64", result.architecture)
         assertEquals(1234L, result.archiveSizeBytes)
+        assertEquals(8192L, result.expandedSizeBytes)
         assertEquals("a".repeat(64), result.archiveSha256)
     }
 
@@ -56,7 +57,7 @@ class RootfsManifestVerifierTest {
         val publicKey = Base64.getEncoder().encodeToString(pair.public.encoded)
         val changed = manifest().also { it[it.lastIndex] = if (it.last().toInt() == 0) 1.toByte() else 0.toByte() }
         assertThrows(IllegalStateException::class.java) {
-            RootfsManifestVerifier.verify(changed, signature, publicKey, "anlr-test-key", 4096)
+            RootfsManifestVerifier.verify(changed, signature, publicKey, "anlr-test-key", 4096, 16384)
         }
         assertThrows(IllegalArgumentException::class.java) {
             RootfsManifestVerifier.verify(bytes, signature, publicKey, "other-key", 4096)
@@ -87,4 +88,16 @@ class RootfsManifestVerifierTest {
             )
         }
     }
+    @Test fun rejectsExpandedSizeAboveConfiguredLimit() {
+        val pair = keyPair()
+        val oversized = JSONObject(String(manifest(), Charsets.UTF_8))
+            .put("expandedSizeBytes", 20000).toString().toByteArray()
+        val publicKey = Base64.getEncoder().encodeToString(pair.public.encoded)
+        assertThrows(IllegalArgumentException::class.java) {
+            RootfsManifestVerifier.verify(
+                oversized, signed(oversized, pair), publicKey, "anlr-test-key", 4096, 16384
+            )
+        }
+    }
+
 }
