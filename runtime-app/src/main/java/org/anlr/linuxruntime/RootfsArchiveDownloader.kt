@@ -27,8 +27,11 @@ internal object RootfsArchiveDownloader {
         }
         check(downloadsDirectory.isDirectory)
         val directory = downloadsDirectory.canonicalFile
-        val partial = File(directory, "${manifest.releaseId}.tar.gz.part")
-        val completed = File(directory, "${manifest.releaseId}.tar.gz")
+        // Bind resumable bytes to the signed archive digest. A reused releaseId
+        // with a newer manifest must never append to bytes from the previous archive.
+        val archiveIdentity = manifest.archiveSha256.lowercase()
+        val partial = File(directory, "${manifest.releaseId}-${archiveIdentity}.tar.gz.part")
+        val completed = File(directory, "${manifest.releaseId}-${archiveIdentity}.tar.gz")
         check(partial.canonicalFile.parentFile == directory && completed.canonicalFile.parentFile == directory) {
             "Invalid rootfs download path"
         }
