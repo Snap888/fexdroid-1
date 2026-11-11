@@ -20,7 +20,7 @@ internal object LinuxGuestSession {
         )
         return NativePty.spawn(
             plan.executable.absolutePath, plan.arguments,
-            plan.workingDirectory.absolutePath, rows, columns, plan.environment
+            plan.workingDirectory.absolutePath, rows, columns, plan.environment, inheritEnvironment = false
         )
     }
 
