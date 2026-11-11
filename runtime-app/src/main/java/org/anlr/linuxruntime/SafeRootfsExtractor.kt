@@ -68,10 +68,17 @@ internal object SafeRootfsExtractor {
                             entry.isSymbolicLink -> {
                                 check(!Files.exists(target, LinkOption.NOFOLLOW_LINKS)) { "Duplicate rootfs path" }
                                 val linkText = entry.linkName
-                                require(linkText.isNotBlank() && !linkText.startsWith("/") && !linkText.contains('\\')) {
-                                    "Absolute or invalid rootfs symlink rejected"
+                                require(linkText.isNotBlank() && !linkText.contains('\\')) {
+                                    "Invalid rootfs symlink rejected"
                                 }
-                                val linkPath = Paths.get(linkText)
+                                val rawLink = Paths.get(linkText)
+                                val linkPath = if (rawLink.isAbsolute) {
+                                    val guestTarget = root.resolve(linkText.removePrefix("/")).normalize()
+                                    require(guestTarget.startsWith(root)) { "Absolute guest symlink escapes rootfs" }
+                                    target.parent.relativize(guestTarget)
+                                } else {
+                                    rawLink
+                                }
                                 val resolved = target.parent.resolve(linkPath).normalize()
                                 require(resolved.startsWith(root)) { "Rootfs symlink escapes destination" }
                                 Files.createSymbolicLink(target, linkPath)
