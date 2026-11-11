@@ -54,4 +54,18 @@ The app-private directory layout and atomic active-rootfs pointer are implemente
 
 ## Rootfs release storage
 
-`RuntimeStorageManager` owns the app-private runtime directory layout and staged-release lifecycle. It rejects unsafe release IDs, requires a completion marker and matching manifest SHA-256 before activation, publishes staged directories by rename, updates the active pointer atomically and rolls back the release directory if pointer publication fails. Startup removes incomplete staging directories. The checksum is a consistency check against a caller-supplied manifest value; authenticity still requires a trusted signed manifest and verified archive digest in the future installer.
+`RuntimeStorageManager` owns the app-private runtime directory layout and staged-release lifecycle. It rejects unsafe release IDs, requires a completion marker and matching manifest SHA-256 before activation, publishes staged directories by rename, updates the active pointer atomically and rolls back the release directory if pointer publication fails. Activation can recover a release already renamed before a process crash. Startup preserves incomplete staging directories; the journal records the manifest digest and phase so download/extraction recovery can continue safely. A real deployment still requires a maintainer-controlled public key and signed manifest distribution.
+
+
+## Rootfs installer milestone (implemented foundation)
+
+- Ed25519 detached signatures authenticate the exact manifest bytes before JSON parsing.
+- The signed manifest is constrained to Debian ARM64 (aarch64), tar.gz, HTTPS, a bounded archive size and SHA-256.
+- Downloads resume from a private .part file and are re-hashed before publication.
+- Tar extraction rejects traversal and unsupported special files, checks expanded size, converts guest-absolute symlink targets into safe relative links inside the guest root, and refuses writes through symlink parents.
+- Install phases are persisted. Interrupted downloads resume; partial extraction is removed without following symlinks and repeated from the verified archive.
+- The production trust anchor and manifest URL are intentionally not guessed or embedded. No install UI is enabled until maintainers provide the real public key and signed manifest.
+
+## ELF compatibility preflight
+
+The import scanner now reads ELF program headers and dynamic metadata to record PT_INTERP and DT_NEEDED. This is diagnostic metadata only; dependency resolution against the installed rootfs, symbol-version compatibility, ABI checks and execution remain future work.
