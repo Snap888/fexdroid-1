@@ -53,7 +53,7 @@ class RootfsManifestVerifierTest {
         val bytes = manifest()
         val signature = signed(bytes, pair)
         val publicKey = Base64.getEncoder().encodeToString(pair.public.encoded)
-        val changed = manifest().also { it[it.lastIndex] = if (it.last().toInt() == 0) 1 else 0 }
+        val changed = manifest().also { it[it.lastIndex] = if (it.last().toInt() == 0) 1.toByte() else 0.toByte() }
         assertThrows(IllegalStateException::class.java) {
             RootfsManifestVerifier.verify(changed, signature, publicKey, "anlr-test-key", 4096)
         }
