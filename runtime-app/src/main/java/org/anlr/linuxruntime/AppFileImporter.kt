@@ -124,5 +124,5 @@ internal object AppFileImporter {
         return ImportedFile(file, sha256, size, format, architecture, candidate)
     }
 
-    private fun ByteArray.toHex(): String = joinToString("") { "%02x".format(it) }
+    private fun ByteArray.toHex(): String = joinToString("") { "%02x".format(it.toInt() and 0xff) }
 }
