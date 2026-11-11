@@ -60,7 +60,7 @@ internal class RuntimeStorageManager(filesDir: File) {
         check(directory.isDirectory) { "Staging release does not exist" }
         writeAtomically(
             File(directory, INSTALL_JOURNAL),
-            "$manifestSha256\\n${phase.name}\\n"
+            "$manifestSha256\n${phase.name}\n"
         )
     }
 
@@ -90,16 +90,22 @@ internal class RuntimeStorageManager(filesDir: File) {
         initialize()
         val staged = child(staging, releaseId)
         val released = child(releases, releaseId)
-        val marker = File(staged, COMPLETE_MARKER)
-        check(staged.isDirectory && marker.isFile) { "Release is incomplete" }
+        val stagedMarker = File(staged, COMPLETE_MARKER)
+        val releasedMarker = File(released, COMPLETE_MARKER)
+        val alreadyPublished = released.isDirectory && releasedMarker.isFile && !staged.exists()
+        val marker = if (alreadyPublished) releasedMarker else stagedMarker
+        check(marker.isFile) { "Release is incomplete" }
         val recorded = marker.readText().trim()
         check(recorded.equals(expectedManifestSha256, ignoreCase = true)) { "Manifest checksum mismatch" }
-        check(!released.exists()) { "Release ID is already installed" }
-        check(staged.renameTo(released)) { "Cannot atomically publish release" }
+        val movedNow = !alreadyPublished
+        if (movedNow) {
+            check(staged.isDirectory && !released.exists()) { "Release ID is already installed" }
+            check(staged.renameTo(released)) { "Cannot atomically publish release" }
+        }
         try {
             writeAtomically(activePointer, releaseId + "\n")
         } catch (error: Exception) {
-            released.renameTo(staged)
+            if (movedNow) released.renameTo(staged)
             throw error
         }
     }
