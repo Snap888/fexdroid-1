@@ -1,6 +1,5 @@
 package org.anlr.linuxruntime
 
-import android.system.Os
 import java.io.BufferedInputStream
 import java.io.File
 import java.io.FileInputStream
@@ -9,6 +8,8 @@ import java.nio.file.Files
 import java.nio.file.LinkOption
 import java.nio.file.Path
 import java.nio.file.Paths
+import java.nio.file.attribute.PosixFilePermission
+import java.util.EnumSet
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry
 import org.apache.commons.compress.archivers.tar.TarArchiveInputStream
 import org.apache.commons.compress.compressors.gzip.GzipCompressorInputStream
@@ -157,6 +158,19 @@ internal object SafeRootfsExtractor {
 
     private fun applyMode(path: Path, mode: Int) {
         // Preserve ordinary rwx bits; never restore setuid/setgid/sticky bits from an archive.
-        Os.chmod(path.toString(), mode and 0x1ff)
+        val permissions = EnumSet.noneOf(PosixFilePermission::class.java)
+        val bits = listOf(
+            0x100 to PosixFilePermission.OWNER_READ,
+            0x80 to PosixFilePermission.OWNER_WRITE,
+            0x40 to PosixFilePermission.OWNER_EXECUTE,
+            0x20 to PosixFilePermission.GROUP_READ,
+            0x10 to PosixFilePermission.GROUP_WRITE,
+            0x08 to PosixFilePermission.GROUP_EXECUTE,
+            0x04 to PosixFilePermission.OTHERS_READ,
+            0x02 to PosixFilePermission.OTHERS_WRITE,
+            0x01 to PosixFilePermission.OTHERS_EXECUTE
+        )
+        bits.forEach { (bit, permission) -> if (mode and bit != 0) permissions.add(permission) }
+        runCatching { Files.setPosixFilePermissions(path, permissions) }
     }
 }
