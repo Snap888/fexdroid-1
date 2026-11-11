@@ -1,6 +1,7 @@
 package org.anlr.linuxruntime
 
 import java.io.File
+import java.nio.file.Files
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
@@ -8,7 +9,7 @@ import org.junit.Test
 
 class RuntimeStorageTest {
     @Test fun createsPrivateLayoutAndStartsWithoutActiveRootfs() {
-        val temp = createTempDir(prefix = "anlr-layout-")
+        val temp = Files.createTempDirectory("anlr-layout-").toFile()
         try {
             val layout = RuntimeStorage.initialize(temp)
             assertEquals(null, RuntimeStorage.active(layout))
@@ -20,7 +21,7 @@ class RuntimeStorageTest {
     }
 
     @Test fun activatesOnlyCompletedRelease() {
-        val temp = createTempDir(prefix = "anlr-activate-")
+        val temp = Files.createTempDirectory("anlr-activate-").toFile()
         try {
             val layout = RuntimeStorage.initialize(temp)
             val release = RuntimeStorage.releaseDirectory(layout, "debian-arm64-1")
@@ -39,7 +40,7 @@ class RuntimeStorageTest {
     }
 
     @Test fun rejectsPathTraversalAndInvalidDigest() {
-        val temp = createTempDir(prefix = "anlr-traversal-")
+        val temp = Files.createTempDirectory("anlr-traversal-").toFile()
         try {
             val layout = RuntimeStorage.initialize(temp)
             assertThrows(IllegalArgumentException::class.java) {
