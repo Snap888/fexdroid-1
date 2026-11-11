@@ -71,7 +71,7 @@ internal object RootfsArchiveDownloader {
                     check(redirects++ < MAX_REDIRECTS) { "Too many rootfs download redirects" }
                     val location = connection.getHeaderField("Location")
                         ?: error("Rootfs redirect has no Location")
-                    val next = URI(currentUrl.toURI()).resolve(location)
+                    val next = currentUrl.toURI().resolve(location)
                     check(next.scheme == "https" && !next.host.isNullOrBlank() &&
                         next.userInfo == null && next.fragment == null) {
                         "Rootfs redirect must remain on HTTPS"
