@@ -3,6 +3,9 @@ package org.anlr.linuxruntime
 import java.io.File
 import java.io.FileOutputStream
 import java.io.InterruptedIOException
+import java.nio.file.AtomicMoveNotSupportedException
+import java.nio.file.Files
+import java.nio.file.StandardCopyOption
 import java.net.HttpURLConnection
 import java.net.URI
 import java.net.URL
