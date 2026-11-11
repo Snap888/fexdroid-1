@@ -8,10 +8,10 @@ import java.io.IOException
  * This is a transport primitive; the caller supplies the executable and environment.
  */
 internal class NativePty private constructor(
-    private val handle: Long
+    private var handle: Long
 ) : Closeable {
-    private val fd: Int = handle.toInt()
-    private val childPid: Int = (handle ushr 32).toInt()
+    private val fd: Int get() = handle.toInt()
+    private val childPid: Int get() = (handle ushr 32).toInt()
 
     fun read(buffer: ByteArray): Int {
         check(fd >= 0)
@@ -53,19 +53,21 @@ internal class NativePty private constructor(
         ): NativePty {
             require(executable.startsWith("/") && workingDirectory.startsWith("/"))
             require(rows in 1..1000 && columns in 1..1000)
-            val handle = nativeSpawn(executable, arguments.toTypedArray(), workingDirectory, rows, columns)
-            check(handle != 0L) { "Cannot create PTY process" }
-            return NativePty(handle)
+            val session = NativePty(0L)
+            session.handle = session.nativeSpawn(executable, arguments.toTypedArray(), workingDirectory, rows, columns)
+            check(session.handle != 0L) { "Cannot create PTY process" }
+            return session
         }
 
-        private external fun nativeSpawn(
+    }
+
+    private external fun nativeSpawn(
             executable: String, arguments: Array<String>, workingDirectory: String,
             rows: Int, columns: Int
         ): Long
-        private external fun nativeRead(fd: Int, buffer: ByteArray): Int
-        private external fun nativeWrite(fd: Int, buffer: ByteArray): Int
-        private external fun nativeResize(fd: Int, rows: Int, columns: Int): Int
-        private external fun nativeSignal(pid: Int, signal: Int): Int
-        private external fun nativeClose(fd: Int, pid: Int)
-    }
+    private external fun nativeRead(fd: Int, buffer: ByteArray): Int
+    private external fun nativeWrite(fd: Int, buffer: ByteArray): Int
+    private external fun nativeResize(fd: Int, rows: Int, columns: Int): Int
+    private external fun nativeSignal(pid: Int, signal: Int): Int
+    private external fun nativeClose(fd: Int, pid: Int)
 }
