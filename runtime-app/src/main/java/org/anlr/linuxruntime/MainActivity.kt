@@ -46,7 +46,12 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-private data class ImportedApp(val id: String, val name: String, val uri: String, val type: String, val localPath: String = "", val sha256: String = "", val sizeBytes: Long = 0L, val architecture: String = "Unknown", val executableCandidate: Boolean = false)
+private data class ImportedApp(
+    val id: String, val name: String, val uri: String, val type: String,
+    val localPath: String = "", val sha256: String = "", val sizeBytes: Long = 0L,
+    val architecture: String = "Unknown", val executableCandidate: Boolean = false,
+    val interpreter: String = "", val neededLibraries: List<String> = emptyList()
+)
 
 private fun deviceSummary(): List<Pair<String, String>> {
     val page = runCatching { Os.sysconf(OsConstants._SC_PAGESIZE).toString() }.getOrDefault("unknown")
@@ -78,7 +83,8 @@ private fun AnlrApp() {
     fun persist(items: List<ImportedApp>) {
         val array = JSONArray()
         items.forEach { app ->
-            array.put(JSONObject().put("id", app.id).put("name", app.name).put("uri", app.uri).put("type", app.type).put("localPath", app.localPath).put("sha256", app.sha256).put("sizeBytes", app.sizeBytes).put("architecture", app.architecture).put("executableCandidate", app.executableCandidate))
+            array.put(JSONObject().put("id", app.id).put("name", app.name).put("uri", app.uri).put("type", app.type).put("localPath", app.localPath).put("sha256", app.sha256).put("sizeBytes", app.sizeBytes).put("architecture", app.architecture).put("executableCandidate", app.executableCandidate).put("interpreter", app.interpreter)
+                .put("neededLibraries", JSONArray(app.neededLibraries)))
         }
         prefs.edit().putString("apps", array.toString()).apply()
         apps = items
@@ -98,7 +104,10 @@ private fun AnlrApp() {
         apps = (0 until array.length()).mapNotNull { i ->
             runCatching {
                 val o = array.getJSONObject(i)
-                ImportedApp(o.getString("id"), o.getString("name"), o.optString("uri", ""), o.optString("type", "Linux file"), o.optString("localPath", ""), o.optString("sha256", ""), o.optLong("sizeBytes", 0L), o.optString("architecture", "Unknown"), o.optBoolean("executableCandidate", false))
+                ImportedApp(o.getString("id"), o.getString("name"), o.optString("uri", ""), o.optString("type", "Linux file"), o.optString("localPath", ""), o.optString("sha256", ""), o.optLong("sizeBytes", 0L), o.optString("architecture", "Unknown"), o.optBoolean("executableCandidate", false),
+                    o.optString("interpreter", ""), (0 until o.optJSONArray("neededLibraries")?.length().orZero()).mapNotNull { n ->
+                        o.optJSONArray("neededLibraries")?.optString(n)?.takeIf { it.isNotBlank() }
+                    })
             }.getOrNull()
         }
     }
@@ -121,7 +130,8 @@ private fun AnlrApp() {
                         id = UUID.randomUUID().toString(), name = name, uri = uri.toString(),
                         type = file.format, localPath = file.file.absolutePath, sha256 = file.sha256,
                         sizeBytes = file.sizeBytes, architecture = file.architecture,
-                        executableCandidate = file.executableCandidate
+                        executableCandidate = file.executableCandidate,
+                        interpreter = file.interpreter.orEmpty(), neededLibraries = file.neededLibraries
                     )
                     persist(apps + entry)
                     notice = "Файл скопирован в приватное хранилище ANLR. Формат: ${entry.type}; архитектура: ${entry.architecture}; SHA-256: ${entry.sha256.take(16)}…"
@@ -278,7 +288,13 @@ private fun AppsScreen(apps: List<ImportedApp>, onImport: () -> Unit, onLaunch: 
                             }
                             Text("SHA-256: ${app.sha256.take(20)}…", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             Text(integrity, style = MaterialTheme.typography.bodySmall, color = if (integrity.startsWith("ОШИБКА")) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
-                            Text(if (app.executableCandidate) "Файл-кандидат на запуск · запуск пока отключён" else "Требуется обработчик формата · запуск отключён", style = MaterialTheme.typography.bodySmall)
+                            Text(if (app.executableCandidate) "ELF/скрипт-кандидат · запуск ожидает Linux backend" else "Требуется обработчик формата · запуск отключён", style = MaterialTheme.typography.bodySmall)
+                            if (app.interpreter.isNotBlank()) Text("Интерпретатор: ${app.interpreter}", style = MaterialTheme.typography.bodySmall)
+                            if (app.neededLibraries.isNotEmpty()) Text(
+                                "DT_NEEDED: ${app.neededLibraries.joinToString()}",
+                                style = MaterialTheme.typography.bodySmall,
+                                maxLines = 3
+                            )
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 Button(onClick = { onLaunch(app) }) { Text("Запустить") }
                                 OutlinedButton(onClick = { onRemove(app.id) }) { Text("Удалить") }
