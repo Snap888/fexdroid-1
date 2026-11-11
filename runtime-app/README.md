@@ -50,9 +50,16 @@ CI note: changes to this module trigger the ANLR APK workflow, which publishes t
 
 The Compose app now has four bottom-navigation destinations: Home, Applications, Terminal and XFCE4.
 
-- Applications: import a Linux file through Android's document picker, persist its URI and metadata, select it for launch (launch remains honestly gated until a runtime backend/rootfs is installed), and remove entries.
-- Terminal: a command console with history in the current view, built-in ANLR commands and a 12-second-bounded Android app-sandbox shell with timeout enforcement that does not block while draining a pipe. This is explicitly not yet a Linux guest TTY; command history and PTY support are not implemented.
+- Applications: copy selected files into ANLR-private storage, calculate SHA-256, inspect ELF magic/class/endianness/e_machine/e_type, retain format and architecture metadata, and delete managed copies. Import is capped at 1 GiB and checks free storage. Execution remains disabled until a real runtime backend/rootfs is installed.
+- Terminal: a command console with output retained in the current view, built-in ANLR commands and a 12-second-bounded Android app-sandbox shell with timeout enforcement that does not block while draining a pipe. This is explicitly not yet a Linux guest TTY; command history and PTY support are not implemented.
 - XFCE4: persistent session profile controls for resolution, UI scale and fullscreen/windowed mode. Starting XFCE remains gated until rootfs, X server and input/audio bridges are implemented.
 - Home: device compatibility summary and shortcuts.
 
 The terminal command runner is a diagnostic app-sandbox shell, not a security boundary for untrusted commands. Do not expose it as a remote shell. Linux guest terminal must be a separate backend once the rootfs exists.
+
+
+## Import pipeline (implemented, execution disabled)
+
+Selected documents are copied from Android's Storage Access Framework into `files/imported-apps` using a temporary file and rename-on-completion. The importer computes SHA-256 while streaming, enforces a 1 GiB per-file ceiling and reserves 64 MiB of free space. It records ELF class, byte order, machine and type when a valid ELF header is present. The architecture label is informational: it does not prove ABI compatibility or safe execution. Scripts and desktop entries are metadata-only and are never executed by Android's host shell.
+
+The original SAF URI is retained as provenance for older records, but the managed private copy is the runtime input. Removing an application removes its managed copy. Legacy entries without a managed copy remain visible but are not executable.
