@@ -66,7 +66,7 @@ internal object HostCommandRunner {
         val completed = try {
             process.waitFor(timeoutMs, TimeUnit.MILLISECONDS)
         } catch (interrupted: InterruptedException) {
-            process.destroyForcibly()
+            stopProcessTree()
             Thread.currentThread().interrupt()
             throw interrupted
         }
