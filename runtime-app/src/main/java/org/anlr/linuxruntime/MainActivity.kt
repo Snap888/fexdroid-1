@@ -211,13 +211,30 @@ private fun QuickAction(title: String, symbol: String, modifier: Modifier, onCli
 
 @Composable
 private fun AppsScreen(apps: List<ImportedApp>, onImport: () -> Unit, onLaunch: (ImportedApp) -> Unit, onRemove: (String) -> Unit) {
+    var search by remember { mutableStateOf("") }
+    val visibleApps = remember(apps, search) {
+        val needle = search.trim().lowercase()
+        apps.filter { app ->
+            needle.isEmpty() || app.name.lowercase().contains(needle) ||
+                app.type.lowercase().contains(needle) || app.architecture.lowercase().contains(needle)
+        }.sortedBy { it.name.lowercase() }
+    }
     Column(Modifier.fillMaxSize().padding(horizontal = 18.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
             Column {
                 Text("Приложения", style = MaterialTheme.typography.headlineSmall)
-                Text("${apps.size} импортировано", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                Text("${apps.size} импортировано · ${visibleApps.size} показано", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             Button(onClick = onImport) { Text("＋ Импорт") }
+        }
+        if (apps.isNotEmpty()) {
+            OutlinedTextField(
+                value = search,
+                onValueChange = { search = it },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                label = { Text("Поиск по имени, формату или архитектуре") }
+            )
         }
         if (apps.isEmpty()) {
             Card(Modifier.fillMaxWidth()) {
@@ -227,9 +244,13 @@ private fun AppsScreen(apps: List<ImportedApp>, onImport: () -> Unit, onLaunch: 
                     OutlinedButton(onClick = onImport) { Text("Выбрать файл") }
                 }
             }
+        } else if (visibleApps.isEmpty()) {
+            Card(Modifier.fillMaxWidth()) {
+                Text("Ничего не найдено. Измените поисковый запрос.", Modifier.padding(18.dp))
+            }
         } else {
             LazyColumn(verticalArrangement = Arrangement.spacedBy(10.dp), contentPadding = PaddingValues(bottom = 18.dp)) {
-                items(apps, key = { it.id }) { app ->
+                items(visibleApps, key = { it.id }) { app ->
                     Card(Modifier.fillMaxWidth()) {
                         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             Text(app.name, style = MaterialTheme.typography.titleMedium)
@@ -249,7 +270,6 @@ private fun AppsScreen(apps: List<ImportedApp>, onImport: () -> Unit, onLaunch: 
         Text("Импорт копирует файл в приватное хранилище ANLR, вычисляет SHA-256 и определяет ELF e_machine. Это проверка формата, а не гарантия безопасности. Исполнение отключено до установки Linux rootfs и backend.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
-
 @Composable
 private fun TerminalScreen(context: Context) {
     var command by remember { mutableStateOf("") }
