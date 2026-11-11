@@ -372,12 +372,18 @@ private fun TerminalScreen(context: Context) {
         append(if (guest) "\n[Debian ARM64 guest PTY started]\n" else "\n[Android host PTY started; not a Debian guest shell]\n")
         ptyReader = scope.launch(Dispatchers.IO) {
             val buffer = ByteArray(4096)
+            val decoder = Utf8StreamDecoder()
             try {
                 while (isActive) {
                     val count = session.read(buffer)
-                    if (count <= 0) break
-                    val chunk = String(buffer, 0, count, Charsets.UTF_8)
-                    withContext(Dispatchers.Main) { append(chunk) }
+                    if (count <= 0) {
+                        val tail = decoder.decode(buffer, 0, 0, endOfInput = true)
+                        if (tail.isNotEmpty()) withContext(Dispatchers.Main) { append(tail) }
+                        break
+                    }
+                    // Preserve partial multibyte characters across native PTY reads.
+                    val chunk = decoder.decode(buffer, 0, count)
+                    if (chunk.isNotEmpty()) withContext(Dispatchers.Main) { append(chunk) }
                 }
             } catch (_: Exception) {
                 // Closing the PTY intentionally unblocks the reader.
