@@ -76,7 +76,7 @@ RootfsManifestVerifier now verifies detached Ed25519 signatures over the exact m
 
 ### Current execution boundary
 
-The terminal still executes a bounded Android host diagnostic shell. It is not a Debian shell and is not a PTY. There is no Linux guest launcher, FEX/Box64 payload, terminal resize/signal bridge, XFCE display server, input/audio/clipboard bridge, or enabled imported-app execution path. The rootfs installer core is not exposed as a user-facing install action until a maintainer supplies a pinned production Ed25519 public key and a signed manifest endpoint.
+The terminal still executes a bounded Android host diagnostic shell. It is not a Debian shell and is not a PTY. There is no Linux guest launcher, FEX/Box64 payload, terminal resize/signal bridge, XFCE display server, input/audio/clipboard bridge, or enabled imported-app execution path. The rootfs installer core is not exposed as a user-facing install action until a maintainer supplies a pinned production Ed25519 public key and a signed manifest endpoint. The signed manifest must include `expandedSizeBytes`; extraction is limited to that signed value and disk space is checked before unpacking.
 
 
 ### Native PTY milestone
