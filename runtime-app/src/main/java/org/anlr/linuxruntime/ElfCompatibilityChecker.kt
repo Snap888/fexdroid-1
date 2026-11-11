@@ -14,14 +14,16 @@ internal data class ElfCompatibilityReport(
 
 /**
  * Conservative preflight. A positive result means required files were found,
- * not that all symbol versions, relocations, syscalls or graphics APIs are supported.
+ * not that symbol versions, relocations, syscalls or graphics APIs are supported.
  */
 internal object ElfCompatibilityChecker {
     private val arm64LibraryDirs = listOf(
-        "lib", "usr/lib", "lib/aarch64-linux-gnu", "usr/lib/aarch64-linux-gnu"
+        "lib", "lib64", "usr/lib", "usr/lib64",
+        "lib/aarch64-linux-gnu", "usr/lib/aarch64-linux-gnu"
     )
     private val x64LibraryDirs = listOf(
-        "lib", "usr/lib", "lib/x86_64-linux-gnu", "usr/lib/x86_64-linux-gnu"
+        "lib", "lib64", "usr/lib", "usr/lib64",
+        "lib/x86_64-linux-gnu", "usr/lib/x86_64-linux-gnu"
     )
 
     fun check(
@@ -36,9 +38,10 @@ internal object ElfCompatibilityChecker {
         val resolved = LinkedHashMap<String, String>()
 
         if (!rootfs.isDirectory) {
-            reasons += "Linux rootfs is not installed"
+            reasons += "Linux dependency rootfs is not installed"
             return ElfCompatibilityReport(false, backend, reasons, emptyList(), emptyMap())
         }
+        val canonicalRoot = rootfs.canonicalFile
         if (!elf.loadable || elf.type !in setOf(2, 3)) reasons += "ELF is not executable/shared-object type"
 
         val expected = when (backend) {
@@ -61,17 +64,11 @@ internal object ElfCompatibilityChecker {
         }
 
         elf.interpreter?.let { interpreter ->
-            val absolutePatched = runCatching { File(interpreter).canonicalFile }.getOrNull()
-            val patchedInsideRoot = absolutePatched != null &&
-                absolutePatched.toPath().startsWith(rootfs.canonicalFile.toPath()) &&
-                absolutePatched.isFile
-            val relative = interpreter.removePrefix("/")
-            val standardInsideRoot = interpreter.startsWith("/") && relative.isNotBlank() &&
-                !relative.split("/").any { it == ".." } && File(rootfs, relative).isFile
-            when {
-                patchedInsideRoot -> resolved["PT_INTERP"] = absolutePatched!!.absolutePath
-                standardInsideRoot -> resolved["PT_INTERP"] = File(rootfs, relative).absolutePath
-                else -> reasons += "ELF interpreter is missing or unsafe: $interpreter"
+            val candidate = resolveGuestPath(canonicalRoot, interpreter)
+            if (candidate == null || !candidate.isFile) {
+                reasons += "ELF interpreter is missing or escapes dependency rootfs: $interpreter"
+            } else {
+                resolved["PT_INTERP"] = candidate.absolutePath
             }
         }
 
@@ -81,12 +78,24 @@ internal object ElfCompatibilityChecker {
                 continue
             }
             val candidate = expected.asSequence()
-                .map { File(rootfs, "$it/$library") }
+                .mapNotNull { directory -> resolveGuestPath(canonicalRoot, "/$directory/$library") }
                 .firstOrNull { it.isFile }
             if (candidate == null) missing += library
             else resolved[library] = candidate.absolutePath
         }
         if (missing.isNotEmpty()) reasons += "Missing shared libraries: ${missing.joinToString()}"
         return ElfCompatibilityReport(reasons.isEmpty(), backend, reasons, missing, resolved)
+    }
+
+    /**
+     * Resolve an absolute guest path without allowing a symlink in the rootfs
+     * to redirect the loader or a dependency outside the selected rootfs.
+     */
+    private fun resolveGuestPath(root: File, guestPath: String): File? {
+        if (!guestPath.startsWith("/") || guestPath.contains('\\')) return null
+        val relative = guestPath.removePrefix("/")
+        if (relative.isBlank() || relative.split('/').any { it == "." || it == ".." || it.isBlank() }) return null
+        val candidate = runCatching { File(root, relative).canonicalFile }.getOrNull() ?: return null
+        return candidate.takeIf { it.toPath().startsWith(root.toPath()) }
     }
 }
