@@ -50,7 +50,7 @@ class RuntimeStorageManagerTest {
         }
     }
 
-    @Test fun rejectsTraversalAndCleansIncompleteStaging() {
+    @Test fun rejectsTraversalAndPreservesInterruptedStagingForRecovery() {
         val root = Files.createTempDirectory("anlr-storage-").toFile()
         try {
             val manager = RuntimeStorageManager(root)
@@ -59,8 +59,8 @@ class RuntimeStorageManagerTest {
                 throw AssertionError("Expected invalid ID")
             } catch (_: IllegalArgumentException) { }
             manager.createStagingRelease("partial")
-            assertEquals(1, manager.removeIncompleteStagingReleases())
-            assertFalse(File(root, "runtime/rootfs/staging/partial").exists())
+            assertEquals(listOf("partial"), manager.recoverStagingReleases())
+            assertTrue(File(root, "runtime/rootfs/staging/partial").isDirectory)
         } finally {
             root.deleteRecursively()
         }
