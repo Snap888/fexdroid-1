@@ -8,6 +8,14 @@ import java.security.MessageDigest
  * App-private release layout and atomic rootfs activation.
  * This does not download, unpack, mount or execute a Linux distribution.
  */
+internal enum class RootfsInstallPhase { PREPARING, DOWNLOADING, DOWNLOADED, EXTRACTING, EXTRACTED }
+
+internal data class RootfsStagingJournal(
+    val releaseId: String,
+    val manifestSha256: String,
+    val phase: RootfsInstallPhase
+)
+
 internal class RuntimeStorageManager(filesDir: File) {
     private val base = File(filesDir, "runtime")
     private val releases = File(base, "rootfs/releases")
@@ -32,6 +40,39 @@ internal class RuntimeStorageManager(filesDir: File) {
         check(!target.exists()) { "Release already exists in staging" }
         check(target.mkdirs()) { "Cannot create staging release" }
         return target
+    }
+
+    fun stagingReleaseDirectory(releaseId: String): File? {
+        validateId(releaseId)
+        val directory = child(staging, releaseId)
+        return directory.takeIf { it.isDirectory }
+    }
+
+    fun downloadsDirectory(): File {
+        initialize()
+        return downloads
+    }
+
+    fun updateStagingJournal(releaseId: String, manifestSha256: String, phase: RootfsInstallPhase) {
+        validateId(releaseId)
+        require(manifestSha256.matches(Regex("[a-fA-F0-9]{64}"))) { "Invalid manifest SHA-256" }
+        val directory = child(staging, releaseId)
+        check(directory.isDirectory) { "Staging release does not exist" }
+        writeAtomically(
+            File(directory, INSTALL_JOURNAL),
+            "$manifestSha256\\n${phase.name}\\n"
+        )
+    }
+
+    fun stagingJournal(releaseId: String): RootfsStagingJournal? {
+        validateId(releaseId)
+        val directory = child(staging, releaseId)
+        val journal = File(directory, INSTALL_JOURNAL)
+        if (!journal.isFile) return null
+        val lines = runCatching { journal.readLines(Charsets.UTF_8) }.getOrNull() ?: return null
+        if (lines.size < 2 || !lines[0].matches(Regex("[a-fA-F0-9]{64}"))) return null
+        val phase = runCatching { RootfsInstallPhase.valueOf(lines[1]) }.getOrNull() ?: return null
+        return RootfsStagingJournal(releaseId, lines[0].lowercase(), phase)
     }
 
     /** Mark only after the caller has extracted and independently verified the payload. */
@@ -118,6 +159,7 @@ internal class RuntimeStorageManager(filesDir: File) {
 
     companion object {
         private const val COMPLETE_MARKER = "ROOTFS_COMPLETE"
+        private const val INSTALL_JOURNAL = "INSTALL_STATE"
         private val ID_PATTERN = Regex("[A-Za-z0-9][A-Za-z0-9._-]{0,63}")
     }
 }
