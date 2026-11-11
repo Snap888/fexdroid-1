@@ -45,3 +45,8 @@ The independent app exposes Home, Applications, Terminal and XFCE4 screens. The 
 3. Implement persistent interactive PTY (resize, stdin/stdout, Ctrl-C, process lifecycle) for the guest terminal.
 4. Install XFCE4 packages into ARM64 rootfs and launch `startxfce4` through a real X11/XWayland display session.
 5. Add session surface, clipboard, keyboard, pointer, touch and audio integration.
+
+
+## Runtime storage implementation
+
+The app-private directory layout and atomic active-rootfs pointer are implemented in `RuntimeStorage`. Release activation requires a completion marker written only after archive extraction and verification. The installer/download/extractor must be implemented separately; no remote rootfs is trusted or installed by this layer.
