@@ -57,7 +57,7 @@ class RootfsManifestVerifierTest {
         assertThrows(IllegalStateException::class.java) {
             RootfsManifestVerifier.verify(changed, signature, publicKey, "anlr-test-key", 4096)
         }
-        assertThrows(IllegalStateException::class.java) {
+        assertThrows(IllegalArgumentException::class.java) {
             RootfsManifestVerifier.verify(bytes, signature, publicKey, "other-key", 4096)
         }
         val wrongArch = manifest("x86_64")
