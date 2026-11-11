@@ -1,5 +1,7 @@
 #include <jni.h>
 #include <cerrno>
+#include <cstdint>
+#include <string>
 #include <csignal>
 #include <cstdlib>
 #include <cstring>
