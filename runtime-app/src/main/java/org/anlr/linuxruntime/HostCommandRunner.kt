@@ -41,7 +41,6 @@ internal object HostCommandRunner {
         val captured = ByteArrayOutputStream(minOf(maxOutputBytes, 4096))
         val truncated = AtomicBoolean(false)
         fun stopProcessTree() {
-            runCatching { process.toHandle().descendants().forEach { it.destroyForcibly() } }
             process.destroyForcibly()
         }
         val reader = thread(name = "anlr-command-output", isDaemon = true) {
