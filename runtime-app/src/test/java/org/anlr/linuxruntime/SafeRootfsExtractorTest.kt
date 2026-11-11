@@ -4,6 +4,7 @@ import java.io.File
 import java.io.FileOutputStream
 import java.nio.file.Files
 import org.apache.commons.compress.archivers.tar.TarArchiveEntry
+import org.apache.commons.compress.archivers.tar.TarConstants
 import org.apache.commons.compress.archivers.tar.TarArchiveOutputStream
 import org.apache.commons.compress.compressors.gzip.GzipCompressorOutputStream
 import org.junit.Assert.assertEquals
@@ -30,9 +31,7 @@ class SafeRootfsExtractorTest {
         val bytes = "PRETTY_NAME=Debian".toByteArray()
         val tar = archive(
             TarArchiveEntry("etc/os-release") to bytes,
-            TarArchiveEntry("usr/bin/sh").apply { linkName = "dash" }.also {
-                it.linkFlag = TarArchiveEntry.LF_SYMLINK
-            } to byteArrayOf()
+            TarArchiveEntry("usr/bin/sh", TarConstants.LF_SYMLINK).apply { linkName = "dash" } to byteArrayOf()
         )
         val root = Files.createTempDirectory("anlr-rootfs-out-").toFile()
         try {
@@ -59,8 +58,7 @@ class SafeRootfsExtractorTest {
             root1.deleteRecursively()
         }
 
-        val symlink = TarArchiveEntry("etc/passwd")
-        symlink.linkFlag = TarArchiveEntry.LF_SYMLINK
+        val symlink = TarArchiveEntry("etc/passwd", TarConstants.LF_SYMLINK)
         symlink.linkName = "/etc/passwd"
         val badLink = archive(symlink to byteArrayOf())
         val root2 = Files.createTempDirectory("anlr-rootfs-link-").toFile()
