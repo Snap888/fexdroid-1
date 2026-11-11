@@ -9,7 +9,16 @@ import java.io.FileOutputStream
 import java.security.MessageDigest
 import java.util.UUID
 
-internal data class ImportedFile(val file: File, val sha256: String, val sizeBytes: Long, val format: String, val architecture: String, val executableCandidate: Boolean)
+internal data class ImportedFile(
+    val file: File,
+    val sha256: String,
+    val sizeBytes: Long,
+    val format: String,
+    val architecture: String,
+    val executableCandidate: Boolean,
+    val interpreter: String?,
+    val neededLibraries: List<String>
+)
 
 internal object AppFileImporter {
     private const val MAX_IMPORT_BYTES = 1L shl 30
@@ -64,7 +73,7 @@ internal object AppFileImporter {
             offset
         }
         val bytes = header.copyOf(read)
-        val elf = ElfInspector.inspect(bytes)
+        val elf = ElfInspector.inspect(file)
         val hasShebang = bytes.size >= 2 && bytes[0] == '#'.code.toByte() && bytes[1] == '!'.code.toByte()
         val lower = name.lowercase()
         val (format, candidate) = when {
@@ -76,7 +85,10 @@ internal object AppFileImporter {
             lower.endsWith(".tar") || lower.endsWith(".tar.gz") || lower.endsWith(".tgz") || lower.endsWith(".xz") -> "Archive" to false
             else -> "Unrecognized file" to false
         }
-        return ImportedFile(file, sha256, size, format, elf?.architecture ?: "Unknown", candidate)
+        return ImportedFile(
+            file, sha256, size, format, elf?.architecture ?: "Unknown", candidate,
+            elf?.interpreter, elf?.neededLibraries ?: emptyList()
+        )
     }
 
     fun deleteManagedCopy(filesDir: File, path: String): Boolean {
