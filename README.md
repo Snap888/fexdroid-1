@@ -87,3 +87,10 @@ You need Linux, the Android SDK and NDK, and Docker. Start with `scripts/check-h
 ## Licence
 
 The project's own code is under the [MIT licence](LICENSE). The components it builds on keep theirs: see [LICENSES.md](LICENSES.md).
+
+
+## Independent Android Native Linux Runtime
+
+A separate application is being developed in the `runtime-app` module. It has its own package ID (`org.anlr.linuxruntime`) and build target; it is not the Steam-specific FEXDroid launcher. See [ANLR architecture](docs/ANLR-ARCHITECTURE.md) and [runtime app README](runtime-app/README.md).
+
+Build its current development APK with `./gradlew :runtime-app:assembleDebug`. The current milestone is the independent app shell and device reconnaissance; FEX/Box64/rootfs installation and launch are not yet bundled.
