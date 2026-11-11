@@ -13,4 +13,4 @@ dependencyResolutionManagement {
     }
 }
 rootProject.name = "fexdroid"
-include(":app")
+include(":app", ":runtime-app")
