@@ -90,6 +90,7 @@ private fun AnlrApp() {
                 RuntimeStorageManager(context.filesDir).apply {
                     initialize()
                     removeIncompleteStagingReleases()
+                    AppFileImporter.cleanupPartialImports(context.filesDir)
                 }
             }
         }.onFailure { notice = "Ошибка инициализации хранилища runtime: ${it.message}" }
@@ -163,7 +164,10 @@ private fun AnlrApp() {
             }
             when (selectedTab) {
                 0 -> HomeScreen(onApps = { selectedTab = 1 }, onTerminal = { selectedTab = 2 }, onDesktop = { selectedTab = 3 })
-                1 -> AppsScreen(apps, onImport = { picker.launch(arrayOf("*/*")) }, onLaunch = { notice = "Runtime ещё не установлен. Импорт приложения сохранён; запуск будет доступен после установки FEX/Box64 и rootfs." }, onRemove = { id -> apps.firstOrNull { it.id == id }?.localPath?.let { File(it).delete() }; persist(apps.filterNot { it.id == id }) })
+                1 -> AppsScreen(apps, onImport = { picker.launch(arrayOf("*/*")) }, onLaunch = { notice = "Runtime ещё не установлен. Импорт приложения сохранён; запуск будет доступен после установки FEX/Box64 и rootfs." }, onRemove = { id ->
+                    apps.firstOrNull { it.id == id }?.localPath?.let { AppFileImporter.deleteManagedCopy(context.filesDir, it) }
+                    persist(apps.filterNot { it.id == id })
+                })
                 2 -> TerminalScreen(context)
                 else -> DesktopScreen()
             }
