@@ -26,11 +26,20 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isCtrlPressed
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONArray
@@ -319,26 +328,88 @@ private fun AppsScreen(apps: List<ImportedApp>, onImport: () -> Unit, onLaunch: 
 @Composable
 private fun TerminalScreen(context: Context) {
     var command by remember { mutableStateOf("") }
-    var output by remember { mutableStateOf("ANLR Terminal · Android host diagnostic shell\nLinux guest shell станет доступен после установки rootfs.\nВведите help для списка команд ANLR.\n") }
+    var output by remember { mutableStateOf("ANLR Terminal · Android host diagnostic shell\nLinux guest shell пока не подключён.\n") }
     var busy by remember { mutableStateOf(false) }
+    var pty by remember { mutableStateOf<NativePty?>(null) }
+    var ptyReader by remember { mutableStateOf<Job?>(null) }
+    var history by remember { mutableStateOf(emptyList<String>()) }
+    var historyIndex by remember { mutableIntStateOf(0) }
+    var terminalRows by remember { mutableIntStateOf(24) }
+    var terminalColumns by remember { mutableIntStateOf(80) }
     val scope = rememberCoroutineScope()
+    val prefs = remember { context.getSharedPreferences("anlr_terminal", Context.MODE_PRIVATE) }
+
+    fun append(text: String) {
+        output = (output + text).takeLast(48 * 1024)
+    }
+
+    fun stopPty() {
+        val active = pty
+        pty = null
+        ptyReader?.cancel()
+        ptyReader = null
+        runCatching { active?.close() }
+    }
+
+    fun startPty() {
+        if (pty != null || busy) return
+        val session = runCatching {
+            NativePty.spawn(
+                "/system/bin/sh", listOf("-i"), context.filesDir.absolutePath,
+                terminalRows, terminalColumns
+            )
+        }.getOrElse {
+            append("\n[PTY start failed: ${it.message}]\n")
+            return
+        }
+        pty = session
+        append("\n[Android host PTY started; not a Debian guest shell]\n")
+        ptyReader = scope.launch(Dispatchers.IO) {
+            val buffer = ByteArray(4096)
+            try {
+                while (isActive) {
+                    val count = session.read(buffer)
+                    if (count <= 0) break
+                    val chunk = String(buffer, 0, count, Charsets.UTF_8)
+                    withContext(Dispatchers.Main) { append(chunk) }
+                }
+            } catch (_: Exception) {
+                // Closing the PTY intentionally unblocks the reader.
+            } finally {
+                withContext(Dispatchers.Main) {
+                    if (pty === session) {
+                        pty = null
+                        append("\n[PTY process ended]\n")
+                    }
+                }
+            }
+        }
+    }
 
     fun submit() {
         val cmd = command.trim()
         if (cmd.isEmpty() || busy) return
         command = ""
         if (cmd == "clear") { output = ""; return }
-        output += "\n$ $cmd\n"
+        history = (history.filterNot { it == cmd } + cmd).takeLast(100)
+        historyIndex = history.size
+        prefs.edit().putString("history", org.json.JSONArray(history).toString()).apply()
+        if (pty != null) {
+            runCatching { pty?.write((cmd + "\n").toByteArray(Charsets.UTF_8)) }
+                .onFailure { append("\n[PTY write failed: ${it.message}]\n") }
+            return
+        }
+        append("\n$ $cmd\n")
         if (cmd == "help") {
-            output += "Команды: help, clear, device, rootfs, uname, id, pwd, ls [path]\nДля произвольных команд используется ограниченный Android app shell (/system/bin/sh), не Linux guest.\n"
+            append("Команды: help, clear, device, rootfs, uname, id, pwd, ls [path]\nЗапустите PTY для интерактивного Android host shell. Debian guest пока недоступен.\n")
             return
         }
         if (cmd == "rootfs") {
-            output += "Linux rootfs: не установлен. Команды гостевой системы пока недоступны.\n"
+            append("Linux rootfs: не установлен или не активирован.\n")
             return
         }
         if (cmd == "device") {
-            output += deviceSummary().joinToString("\n") { "${it.first}: ${it.second}" } + "\n"
+            append(deviceSummary().joinToString("\n") { "${it.first}: ${it.second}" } + "\n")
             return
         }
         busy = true
@@ -348,34 +419,75 @@ private fun TerminalScreen(context: Context) {
                     val result = HostCommandRunner.run(cmd, context.filesDir)
                     buildString {
                         append(result.output.ifBlank { "(no output)" })
-                        if (result.timedOut) append("\\nCommand timed out after 12 seconds")
-                        if (result.truncated) append("\\n[output truncated at 12 KiB; process stopped]")
-                        result.exitCode?.let { append("\\n[exit $it]") }
+                        if (result.timedOut) append("\nCommand timed out after 12 seconds")
+                        if (result.truncated) append("\n[output truncated at 12 KiB; process stopped]")
+                        result.exitCode?.let { append("\n[exit $it]") }
                         append('\n')
                     }
                 }.getOrElse { "Error: ${it.message}\n" }
             }
-            output += result
+            append(result)
             busy = false
         }
     }
+
+    LaunchedEffect(Unit) {
+        val saved = runCatching { org.json.JSONArray(prefs.getString("history", "[]")) }.getOrNull()
+        history = saved?.let { array -> (0 until array.length()).map { array.optString(it) }.filter { it.isNotBlank() }.takeLast(100) } ?: emptyList()
+        historyIndex = history.size
+    }
+    DisposableEffect(Unit) { onDispose { stopPty() } }
 
     Column(Modifier.fillMaxSize().padding(horizontal = 14.dp, vertical = 8.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             Column {
                 Text("Терминал", style = MaterialTheme.typography.headlineSmall)
-                Text("Android host · sandbox", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.tertiary)
+                Text(if (pty != null) "POSIX PTY · Android host" else "Android host · sandbox", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.tertiary)
             }
-            TextButton(onClick = { output = "" }) { Text("Очистить") }
+            Row {
+                TextButton(onClick = { if (pty == null) startPty() else stopPty() }) {
+                    Text(if (pty == null) "Запустить PTY" else "Остановить PTY")
+                }
+                TextButton(onClick = { output = "" }) { Text("Очистить") }
+            }
         }
-        Surface(Modifier.weight(1f).fillMaxWidth(), color = Color(0xFF10151C), shape = RoundedCornerShape(14.dp)) {
+        Surface(
+            Modifier.weight(1f).fillMaxWidth().onSizeChanged { size ->
+                val density = context.resources.displayMetrics.density
+                val cols = (size.width / (8f * density)).toInt().coerceIn(20, 240)
+                val rows = (size.height / (18f * density)).toInt().coerceIn(5, 100)
+                if (cols != terminalColumns || rows != terminalRows) {
+                    terminalColumns = cols
+                    terminalRows = rows
+                    runCatching { pty?.resize(rows, cols) }
+                }
+            },
+            color = Color(0xFF10151C), shape = RoundedCornerShape(14.dp)
+        ) {
             Text(output, Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(14.dp), color = Color(0xFFD7E2EE), fontFamily = FontFamily.Monospace, fontSize = 12.sp, lineHeight = 18.sp)
         }
         Row(Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceVariant, RoundedCornerShape(12.dp)).padding(horizontal = 12.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
             Text("$", fontFamily = FontFamily.Monospace, color = MaterialTheme.colorScheme.primary)
             Spacer(Modifier.width(8.dp))
             BasicTextField(
-                value = command, onValueChange = { command = it }, modifier = Modifier.weight(1f).padding(vertical = 12.dp),
+                value = command, onValueChange = { command = it }, modifier = Modifier.weight(1f).padding(vertical = 12.dp)
+                    .onPreviewKeyEvent { event ->
+                        if (event.type != KeyEventType.KeyDown) return@onPreviewKeyEvent false
+                        when {
+                            event.isCtrlPressed && event.key == Key.C && pty != null -> {
+                                runCatching { pty?.write(byteArrayOf(3)) }; true
+                            }
+                            event.key == Key.DirectionUp && history.isNotEmpty() -> {
+                                historyIndex = (historyIndex - 1).coerceAtLeast(0)
+                                command = history[historyIndex]; true
+                            }
+                            event.key == Key.DirectionDown && history.isNotEmpty() -> {
+                                historyIndex = (historyIndex + 1).coerceAtMost(history.size)
+                                command = history.getOrNull(historyIndex).orEmpty(); true
+                            }
+                            else -> false
+                        }
+                    },
                 singleLine = true, textStyle = MaterialTheme.typography.bodyMedium.copy(fontFamily = FontFamily.Monospace, color = MaterialTheme.colorScheme.onSurface),
                 keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
                 keyboardActions = KeyboardActions(onSend = { submit() }),
@@ -383,7 +495,7 @@ private fun TerminalScreen(context: Context) {
             )
             TextButton(enabled = !busy, onClick = { submit() }) { Text(if (busy) "…" else "Выполнить") }
         }
-        Text("Ограничения: команды выполняются в sandbox приложения Android. Это пока не полноценный интерактивный TTY и не shell Debian.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("PTY, история, Ctrl+C и resize подключены для Android host shell. Это пока не Debian guest и не полноценный терминальный эмулятор ANSI.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
