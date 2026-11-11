@@ -46,7 +46,7 @@ class SafeRootfsExtractorTest {
         }
     }
 
-    @Test fun rejectsTraversalAndAbsoluteSymlinks() {
+    @Test fun rejectsTraversalAndNormalizesGuestAbsoluteSymlinks() {
         val traversal = archive(TarArchiveEntry("../escape") to "x".toByteArray())
         val root1 = Files.createTempDirectory("anlr-rootfs-bad-").toFile()
         try {
@@ -58,17 +58,33 @@ class SafeRootfsExtractorTest {
             root1.deleteRecursively()
         }
 
-        val symlink = TarArchiveEntry("etc/passwd", TarConstants.LF_SYMLINK)
-        symlink.linkName = "/etc/passwd"
-        val badLink = archive(symlink to byteArrayOf())
+        val symlink = TarArchiveEntry("bin/sh", TarConstants.LF_SYMLINK)
+        symlink.linkName = "/usr/bin/dash"
+        val safeLink = archive(symlink to byteArrayOf())
         val root2 = Files.createTempDirectory("anlr-rootfs-link-").toFile()
         try {
+            SafeRootfsExtractor.extractTarGz(safeLink, root2, 1024)
+            assertTrue(Files.isSymbolicLink(File(root2, "bin/sh").toPath()))
+            assertEquals(
+                "../usr/bin/dash",
+                Files.readSymbolicLink(File(root2, "bin/sh").toPath()).toString()
+            )
+        } finally {
+            safeLink.delete()
+            root2.deleteRecursively()
+        }
+
+        val escapingLink = TarArchiveEntry("etc/out", TarConstants.LF_SYMLINK)
+        escapingLink.linkName = "../../../../outside"
+        val badLink = archive(escapingLink to byteArrayOf())
+        val root3 = Files.createTempDirectory("anlr-rootfs-link-bad-").toFile()
+        try {
             assertThrows(IllegalArgumentException::class.java) {
-                SafeRootfsExtractor.extractTarGz(badLink, root2, 1024)
+                SafeRootfsExtractor.extractTarGz(badLink, root3, 1024)
             }
         } finally {
             badLink.delete()
-            root2.deleteRecursively()
+            root3.deleteRecursively()
         }
     }
 
