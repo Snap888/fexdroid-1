@@ -48,7 +48,7 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-private data class ImportedApp(val id: String, val name: String, val uri: String, val type: String)
+private data class ImportedApp(val id: String, val name: String, val uri: String, val type: String, val localPath: String = "", val sha256: String = "", val sizeBytes: Long = 0L, val architecture: String = "Unknown", val executableCandidate: Boolean = false)
 
 private fun deviceSummary(): List<Pair<String, String>> {
     val page = runCatching { Os.sysconf(OsConstants._SC_PAGESIZE).toString() }.getOrDefault("unknown")
@@ -75,11 +75,12 @@ private fun AnlrApp() {
     var notice by remember { mutableStateOf<String?>(null) }
     val context = androidx.compose.ui.platform.LocalContext.current
     val prefs = remember { context.getSharedPreferences("anlr_apps", 0) }
+    val scope = rememberCoroutineScope()
 
     fun persist(items: List<ImportedApp>) {
         val array = JSONArray()
         items.forEach { app ->
-            array.put(JSONObject().put("id", app.id).put("name", app.name).put("uri", app.uri).put("type", app.type))
+            array.put(JSONObject().put("id", app.id).put("name", app.name).put("uri", app.uri).put("type", app.type).put("localPath", app.localPath).put("sha256", app.sha256).put("sizeBytes", app.sizeBytes).put("architecture", app.architecture).put("executableCandidate", app.executableCandidate))
         }
         prefs.edit().putString("apps", array.toString()).apply()
         apps = items
@@ -90,24 +91,38 @@ private fun AnlrApp() {
         apps = (0 until array.length()).mapNotNull { i ->
             runCatching {
                 val o = array.getJSONObject(i)
-                ImportedApp(o.getString("id"), o.getString("name"), o.getString("uri"), o.optString("type", "Linux file"))
+                ImportedApp(o.getString("id"), o.getString("name"), o.optString("uri", ""), o.optString("type", "Linux file"), o.optString("localPath", ""), o.optString("sha256", ""), o.optLong("sizeBytes", 0L), o.optString("architecture", "Unknown"), o.optBoolean("executableCandidate", false))
             }.getOrNull()
         }
     }
 
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
         if (uri != null) {
-            runCatching { context.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }
             val name = runCatching {
-                context.contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { c ->
-                    if (c.moveToFirst()) c.getString(0) else null
+                context.contentResolver.query(uri, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+                    if (cursor.moveToFirst()) cursor.getString(0) else null
                 }
             }.getOrNull() ?: uri.lastPathSegment ?: "Linux application"
-            val ext = name.substringAfterLast('.', "").lowercase()
-            val type = when (ext) { "appimage" -> "AppImage"; "sh" -> "Shell script"; "desktop" -> "Desktop entry"; else -> "ELF / Linux file" }
-            persist(apps + ImportedApp(UUID.randomUUID().toString(), name, uri.toString(), type))
-            notice = "Добавлено: $name. Для запуска потребуется установленный Linux runtime."
-            selectedTab = 1
+            scope.launch {
+                val imported = runCatching {
+                    withContext(Dispatchers.IO) {
+                        AppFileImporter.import(context.contentResolver, uri, name, context.filesDir)
+                    }
+                }
+                imported.onSuccess { file ->
+                    val entry = ImportedApp(
+                        id = UUID.randomUUID().toString(), name = name, uri = uri.toString(),
+                        type = file.format, localPath = file.file.absolutePath, sha256 = file.sha256,
+                        sizeBytes = file.sizeBytes, architecture = file.architecture,
+                        executableCandidate = file.executableCandidate
+                    )
+                    persist(apps + entry)
+                    notice = "Файл скопирован в приватное хранилище ANLR. Формат: ${entry.type}; архитектура: ${entry.architecture}; SHA-256: ${entry.sha256.take(16)}…"
+                    selectedTab = 1
+                }.onFailure { error ->
+                    notice = "Импорт не выполнен: ${error.message ?: "неизвестная ошибка"}"
+                }
+            }
         }
     }
 
@@ -142,7 +157,7 @@ private fun AnlrApp() {
             }
             when (selectedTab) {
                 0 -> HomeScreen(onApps = { selectedTab = 1 }, onTerminal = { selectedTab = 2 }, onDesktop = { selectedTab = 3 })
-                1 -> AppsScreen(apps, onImport = { picker.launch(arrayOf("*/*")) }, onLaunch = { notice = "Runtime ещё не установлен. Импорт приложения сохранён; запуск будет доступен после установки FEX/Box64 и rootfs." }, onRemove = { id -> persist(apps.filterNot { it.id == id }) })
+                1 -> AppsScreen(apps, onImport = { picker.launch(arrayOf("*/*")) }, onLaunch = { notice = "Runtime ещё не установлен. Импорт приложения сохранён; запуск будет доступен после установки FEX/Box64 и rootfs." }, onRemove = { id -> apps.firstOrNull { it.id == id }?.localPath?.let { File(it).delete() }; persist(apps.filterNot { it.id == id }) })
                 2 -> TerminalScreen(context)
                 else -> DesktopScreen()
             }
@@ -219,7 +234,9 @@ private fun AppsScreen(apps: List<ImportedApp>, onImport: () -> Unit, onLaunch: 
                         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                             Text(app.name, style = MaterialTheme.typography.titleMedium)
                             Text(app.type, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Text("Источник: выбранный файл · URI сохранён", style = MaterialTheme.typography.bodySmall)
+                            Text("${app.architecture} · ${app.sizeBytes / 1024} KB", style = MaterialTheme.typography.bodySmall)
+                            Text("SHA-256: ${app.sha256.take(20)}…", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(if (app.executableCandidate) "Файл-кандидат на запуск · запуск пока отключён" else "Требуется обработчик формата · запуск отключён", style = MaterialTheme.typography.bodySmall)
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 Button(onClick = { onLaunch(app) }) { Text("Запустить") }
                                 OutlinedButton(onClick = { onRemove(app.id) }) { Text("Удалить") }
@@ -229,7 +246,7 @@ private fun AppsScreen(apps: List<ImportedApp>, onImport: () -> Unit, onLaunch: 
                 }
             }
         }
-        Text("Импорт сохраняет ссылку на файл. Исполнение пока заблокировано до установки Linux rootfs и backend; APK/AppImage не запускаются средствами Android напрямую.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("Импорт копирует файл в приватное хранилище ANLR, вычисляет SHA-256 и определяет ELF e_machine. Это проверка формата, а не гарантия безопасности. Исполнение отключено до установки Linux rootfs и backend.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
