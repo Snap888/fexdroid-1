@@ -1,6 +1,9 @@
 package org.anlr.linuxruntime
 
+import android.system.Os
+import android.system.OsConstants
 import java.io.ByteArrayOutputStream
+import java.io.File
 import java.io.File
 import java.nio.charset.Charset
 import java.util.concurrent.TimeUnit
@@ -40,7 +43,23 @@ internal object HostCommandRunner {
             .start()
         val captured = ByteArrayOutputStream(minOf(maxOutputBytes, 4096))
         val truncated = AtomicBoolean(false)
+        fun processId(): Int? = runCatching {
+            (Process::class.java.getMethod("pid").invoke(process) as Long).toInt()
+        }.getOrNull()?.takeIf { it > 0 }
+
+        fun killTree(pid: Int, visited: MutableSet<Int>) {
+            if (!visited.add(pid)) return
+            val childrenFile = File("/proc/$pid/task/$pid/children")
+            val children = runCatching {
+                childrenFile.readText().trim().split(Regex("\\s+"))
+                    .mapNotNull { it.toIntOrNull() }
+            }.getOrDefault(emptyList())
+            children.forEach { child -> killTree(child, visited) }
+            runCatching { Os.kill(pid, OsConstants.SIGKILL) }
+        }
+
         fun stopProcessTree() {
+            processId()?.let { killTree(it, HashSet()) }
             process.destroyForcibly()
         }
         val reader = thread(name = "anlr-command-output", isDaemon = true) {
