@@ -326,7 +326,7 @@ private fun TerminalScreen(context: Context) {
                         if (result.timedOut) append("\\nCommand timed out after 12 seconds")
                         if (result.truncated) append("\\n[output truncated at 12 KiB; process stopped]")
                         result.exitCode?.let { append("\\n[exit $it]") }
-                        append('\\n')
+                        append('\n')
                     }
                 }.getOrElse { "Error: ${it.message}\n" }
             }
