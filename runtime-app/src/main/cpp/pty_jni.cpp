@@ -24,7 +24,7 @@ static jlong pack_handle(pid_t pid, int fd) {
 extern "C" JNIEXPORT jlong JNICALL
 Java_org_anlr_linuxruntime_NativePty_nativeSpawn(
     JNIEnv* env, jobject, jstring executable, jobjectArray arguments,
-    jstring working_directory, jint rows, jint columns, jobjectArray environment) {
+    jstring working_directory, jint rows, jint columns, jboolean inherit_environment, jobjectArray environment) {
     if (!executable || !working_directory || rows < 1 || columns < 1) return 0;
     const char* exe = env->GetStringUTFChars(executable, nullptr);
     const char* cwd = env->GetStringUTFChars(working_directory, nullptr);
@@ -52,7 +52,7 @@ Java_org_anlr_linuxruntime_NativePty_nativeSpawn(
     argv.push_back(nullptr);
 
     std::map<std::string, std::string> env_map;
-    for (char** item = environ; item && *item; ++item) {
+    if (inherit_environment) for (char** item = environ; item && *item; ++item) {
         std::string entry(*item);
         const auto separator = entry.find('=');
         if (separator != std::string::npos && separator > 0)
