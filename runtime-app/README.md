@@ -63,3 +63,8 @@ The terminal command runner is a diagnostic app-sandbox shell, not a security bo
 Selected documents are copied from Android's Storage Access Framework into `files/imported-apps` using a temporary file and rename-on-completion. The importer computes SHA-256 while streaming, enforces a 1 GiB per-file ceiling and reserves 64 MiB of free space. It records ELF class, byte order, machine and type through a bounds-checked standalone parser. Unit tests cover x86-64 little-endian, AArch64 big-endian, relocatable objects, truncated headers and invalid identification bytes. The architecture label is informational: it does not prove ABI compatibility or safe execution. Shell scripts are only marked as candidates when a shebang is present; desktop entries are metadata-only. No imported file is executed by Android's host shell.
 
 The original SAF URI is retained as provenance for older records, but the managed private copy is the runtime input. Removing an application removes its managed copy. Legacy entries without a managed copy remain visible but are not executable.
+
+
+## Runtime storage foundation
+
+ANLR initializes an app-private runtime layout (`rootfs/releases`, `rootfs/staging`, downloads, applications, logs and cache). A rootfs release can become active only after the installer has written `ROOTFS_COMPLETE`; activation writes a small release pointer via a temporary file and rename. Release IDs and manifest SHA-256 values are validated, and path traversal is rejected. This is the storage/activation foundation only: no distribution is downloaded or extracted yet.
