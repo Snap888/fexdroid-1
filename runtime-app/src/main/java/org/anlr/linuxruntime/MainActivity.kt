@@ -331,6 +331,7 @@ private fun TerminalScreen(context: Context) {
     var output by remember { mutableStateOf("ANLR Terminal · Android host diagnostic shell\nLinux guest shell пока не подключён.\n") }
     var busy by remember { mutableStateOf(false) }
     var pty by remember { mutableStateOf<NativePty?>(null) }
+    var activeRootfs by remember { mutableStateOf<File?>(null) }
     var ptyReader by remember { mutableStateOf<Job?>(null) }
     var history by remember { mutableStateOf(emptyList<String>()) }
     var historyIndex by remember { mutableIntStateOf(0) }
@@ -351,19 +352,24 @@ private fun TerminalScreen(context: Context) {
         runCatching { active?.close() }
     }
 
-    fun startPty() {
+    fun startPty(guest: Boolean = false) {
         if (pty != null || busy) return
         val session = runCatching {
-            NativePty.spawn(
-                "/system/bin/sh", listOf("-i"), context.filesDir.absolutePath,
-                terminalRows, terminalColumns
-            )
+            if (guest) {
+                val root = activeRootfs ?: error("Debian rootfs is not installed or activated")
+                LinuxGuestSession.startShell(root, rows = terminalRows, columns = terminalColumns)
+            } else {
+                NativePty.spawn(
+                    "/system/bin/sh", listOf("-i"), context.filesDir.absolutePath,
+                    terminalRows, terminalColumns
+                )
+            }
         }.getOrElse {
             append("\n[PTY start failed: ${it.message}]\n")
             return
         }
         pty = session
-        append("\n[Android host PTY started; not a Debian guest shell]\n")
+        append(if (guest) "\n[Debian ARM64 guest PTY started]\n" else "\n[Android host PTY started; not a Debian guest shell]\n")
         ptyReader = scope.launch(Dispatchers.IO) {
             val buffer = ByteArray(4096)
             try {
@@ -433,6 +439,9 @@ private fun TerminalScreen(context: Context) {
     }
 
     LaunchedEffect(Unit) {
+        activeRootfs = withContext(Dispatchers.IO) {
+            runCatching { RuntimeStorageManager(context.filesDir).activeRootDirectory() }.getOrNull()
+        }
         val saved = runCatching { org.json.JSONArray(prefs.getString("history", "[]")) }.getOrNull()
         history = saved?.let { array -> (0 until array.length()).map { array.optString(it) }.filter { it.isNotBlank() }.takeLast(100) } ?: emptyList()
         historyIndex = history.size
@@ -446,8 +455,11 @@ private fun TerminalScreen(context: Context) {
                 Text(if (pty != null) "POSIX PTY · Android host" else "Android host · sandbox", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.tertiary)
             }
             Row {
-                TextButton(onClick = { if (pty == null) startPty() else stopPty() }) {
-                    Text(if (pty == null) "Запустить PTY" else "Остановить PTY")
+                TextButton(onClick = { if (pty == null) startPty(false) else stopPty() }) {
+                    Text(if (pty == null) "Host PTY" else "Остановить")
+                }
+                TextButton(enabled = pty == null && activeRootfs != null, onClick = { startPty(true) }) {
+                    Text("Linux guest")
                 }
                 TextButton(onClick = { output = "" }) { Text("Очистить") }
             }
