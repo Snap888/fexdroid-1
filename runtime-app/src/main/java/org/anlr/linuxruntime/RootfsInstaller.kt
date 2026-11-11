@@ -56,6 +56,20 @@ internal object RootfsInstaller {
 
         val staging = storage.stagingReleaseDirectory(manifest.releaseId)
             ?: storage.createStagingRelease(manifest.releaseId)
+        // Crash may occur after writing ROOTFS_COMPLETE but before rename/active pointer.
+        // Re-validate the staged shell and finish activation instead of downloading again.
+        if (storage.isStagingReleaseComplete(manifest.releaseId, manifest.manifestSha256)) {
+            val stagedRoot = File(staging, "rootfs")
+            check(stagedRoot.isDirectory &&
+                (File(stagedRoot, "bin/sh").exists() || File(stagedRoot, "usr/bin/sh").exists())) {
+                "Completed staging release is missing its Linux shell"
+            }
+            storage.activate(manifest.releaseId, manifest.manifestSha256)
+            return RootfsInstallResult(
+                manifest.releaseId, storage.activeRootDirectory() ?: File(storage.releaseDirectory(manifest.releaseId)!!, "rootfs"),
+                0, 0, manifest.manifestSha256
+            )
+        }
         val previousJournal = storage.stagingJournal(manifest.releaseId)
         check(previousJournal == null || previousJournal.manifestSha256 == manifest.manifestSha256) {
             "Staging directory belongs to a different signed rootfs manifest"
