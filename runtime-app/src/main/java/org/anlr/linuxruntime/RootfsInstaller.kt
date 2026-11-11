@@ -35,7 +35,7 @@ internal object RootfsInstaller {
     ): RootfsInstallResult {
         val manifest = RootfsManifestVerifier.verify(
             manifestBytes, signatureBase64, trustedPublicKeyBase64,
-            expectedKeyId, maxArchiveSizeBytes
+            expectedKeyId, maxArchiveSizeBytes, maxExtractedBytes
         )
         require(maxExtractedBytes > 0) { "Expanded rootfs size limit must be positive" }
         val storage = RuntimeStorageManager(filesDir)
@@ -81,12 +81,15 @@ internal object RootfsInstaller {
         )
         storage.updateStagingJournal(manifest.releaseId, manifest.manifestSha256, RootfsInstallPhase.DOWNLOADED)
 
+        check(staging.usableSpace >= manifest.expandedSizeBytes) {
+            "Insufficient free space for expanded Debian rootfs"
+        }
         val extractedRoot = File(staging, "rootfs")
         if (extractedRoot.exists()) deleteTreeNoFollow(extractedRoot.toPath())
         check(extractedRoot.mkdirs()) { "Cannot create rootfs extraction directory" }
         storage.updateStagingJournal(manifest.releaseId, manifest.manifestSha256, RootfsInstallPhase.EXTRACTING)
         val extraction = SafeRootfsExtractor.extractTarGz(
-            archive, extractedRoot, maxExtractedBytes
+            archive, extractedRoot, manifest.expandedSizeBytes
         )
         check(File(extractedRoot, "bin/sh").exists() || File(extractedRoot, "usr/bin/sh").exists()) {
             "Downloaded archive is not a usable Debian ARM64 rootfs: /bin/sh is missing"
