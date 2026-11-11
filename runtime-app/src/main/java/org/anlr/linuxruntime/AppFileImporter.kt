@@ -76,9 +76,10 @@ internal object AppFileImporter {
         val elf = ElfInspector.inspect(file)
         val hasShebang = bytes.size >= 2 && bytes[0] == '#'.code.toByte() && bytes[1] == '!'.code.toByte()
         val lower = name.lowercase()
+        val elfExecutable = elf?.loadable == true && file.setExecutable(true, true)
         val (format, candidate) = when {
-            elf != null && lower.endsWith(".appimage") -> "AppImage · ELF" to elf.loadable
-            elf != null -> "ELF binary" to elf.loadable
+            elf != null && lower.endsWith(".appimage") -> "AppImage · ELF" to elfExecutable
+            elf != null -> "ELF binary" to elfExecutable
             hasShebang && (lower.endsWith(".sh") || lower.endsWith(".bash")) -> "Shell script · shebang detected" to true
             lower.endsWith(".desktop") -> "Desktop entry (not executable)" to false
             lower.endsWith(".deb") -> "Debian package" to false
