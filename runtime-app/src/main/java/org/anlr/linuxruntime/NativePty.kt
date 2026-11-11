@@ -52,12 +52,13 @@ internal class NativePty private constructor(
             arguments: List<String>,
             workingDirectory: String,
             rows: Int = 24,
-            columns: Int = 80
+            columns: Int = 80,
+            environment: Map<String, String> = emptyMap()
         ): NativePty {
             require(executable.startsWith("/") && workingDirectory.startsWith("/"))
             require(rows in 1..1000 && columns in 1..1000)
             val session = NativePty(0L)
-            session.handle = session.nativeSpawn(executable, arguments.toTypedArray(), workingDirectory, rows, columns)
+            session.handle = session.nativeSpawn(executable, arguments.toTypedArray(), workingDirectory, rows, columns, environment.map { "${it.key}=${it.value}" }.toTypedArray())
             check(session.handle != 0L) { "Cannot create PTY process" }
             return session
         }
@@ -66,7 +67,7 @@ internal class NativePty private constructor(
 
     private external fun nativeSpawn(
             executable: String, arguments: Array<String>, workingDirectory: String,
-            rows: Int, columns: Int
+            rows: Int, columns: Int, environment: Array<String>
         ): Long
     private external fun nativeRead(fd: Int, buffer: ByteArray): Int
     private external fun nativeWrite(fd: Int, buffer: ByteArray): Int
