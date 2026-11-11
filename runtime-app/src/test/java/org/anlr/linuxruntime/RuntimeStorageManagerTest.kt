@@ -1,6 +1,7 @@
 package org.anlr.linuxruntime
 
 import java.io.File
+import java.nio.file.Files
 import java.security.MessageDigest
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -13,7 +14,7 @@ class RuntimeStorageManagerTest {
         .digest(value.toByteArray()).joinToString("") { "%02x".format(it.toInt() and 0xff) }
 
     @Test fun activatesOnlyCompleteReleaseWithMatchingManifest() {
-        val root = createTempDir(prefix = "anlr-storage-")
+        val root = Files.createTempDirectory("anlr-storage-").toFile()
         try {
             val manager = RuntimeStorageManager(root)
             val release = manager.createStagingRelease("debian-arm64-v1")
@@ -29,7 +30,7 @@ class RuntimeStorageManagerTest {
     }
 
     @Test fun refusesChecksumMismatchAndIncompleteRelease() {
-        val root = createTempDir(prefix = "anlr-storage-")
+        val root = Files.createTempDirectory("anlr-storage-").toFile()
         try {
             val manager = RuntimeStorageManager(root)
             manager.createStagingRelease("incomplete")
@@ -50,7 +51,7 @@ class RuntimeStorageManagerTest {
     }
 
     @Test fun rejectsTraversalAndCleansIncompleteStaging() {
-        val root = createTempDir(prefix = "anlr-storage-")
+        val root = Files.createTempDirectory("anlr-storage-").toFile()
         try {
             val manager = RuntimeStorageManager(root)
             try {
