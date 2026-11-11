@@ -52,9 +52,17 @@ internal object LinuxLaunchPlanner {
                     executable = binary
                     commandArguments = arguments
                 } else {
-                    executable = File(canonicalRoot, elf.interpreter.removePrefix("/")).canonicalFile
-                    check(executable.toPath().startsWith(canonicalRoot.toPath())) {
-                        "ELF interpreter escapes rootfs"
+                    val patchedInterpreter = runCatching { File(elf.interpreter).canonicalFile }.getOrNull()
+                    executable = if (patchedInterpreter != null &&
+                        patchedInterpreter.toPath().startsWith(canonicalRoot.toPath()) &&
+                        patchedInterpreter.isFile
+                    ) {
+                        patchedInterpreter
+                    } else {
+                        File(canonicalRoot, elf.interpreter.removePrefix("/")).canonicalFile
+                    }
+                    check(executable.toPath().startsWith(canonicalRoot.toPath()) && executable.isFile) {
+                        "ELF interpreter escapes rootfs or is missing"
                     }
                     val libraryPath = libraryDirs.map { File(canonicalRoot, it) }
                         .filter { it.isDirectory }.joinToString(":") { it.absolutePath }
