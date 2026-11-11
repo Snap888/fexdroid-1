@@ -94,6 +94,10 @@ internal object RootfsInstaller {
         check(File(extractedRoot, "bin/sh").exists() || File(extractedRoot, "usr/bin/sh").exists()) {
             "Downloaded archive is not a usable Debian ARM64 rootfs: /bin/sh is missing"
         }
+        val runtimeAbi = File(extractedRoot, "usr/lib/anlr/runtime-abi")
+        check(runtimeAbi.isFile && runtimeAbi.readText().trim() == manifest.runtimeAbi) {
+            "Rootfs does not contain the required ANLR-patched glibc runtime ABI"
+        }
         storage.updateStagingJournal(manifest.releaseId, manifest.manifestSha256, RootfsInstallPhase.EXTRACTED)
         storage.markComplete(manifest.releaseId, manifest.manifestSha256)
         storage.activate(manifest.releaseId, manifest.manifestSha256)
