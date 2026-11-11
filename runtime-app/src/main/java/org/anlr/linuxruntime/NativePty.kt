@@ -14,14 +14,14 @@ internal class NativePty private constructor(
     private val childPid: Int get() = (handle ushr 32).toInt()
 
     fun read(buffer: ByteArray): Int {
-        check(fd >= 0)
+        check(handle != 0L)
         val count = nativeRead(fd, buffer)
         if (count < 0) throw IOException("PTY read failed: errno ${-count}")
         return count
     }
 
     fun write(bytes: ByteArray): Int {
-        check(fd >= 0)
+        check(handle != 0L)
         val count = nativeWrite(fd, bytes)
         if (count < 0) throw IOException("PTY write failed: errno ${-count}")
         return count
@@ -29,16 +29,19 @@ internal class NativePty private constructor(
 
     fun resize(rows: Int, columns: Int) {
         require(rows in 1..1000 && columns in 1..1000)
-        check(nativeResize(fd, rows, columns) == 0) { "PTY resize failed" }
+        check(handle != 0L && nativeResize(fd, rows, columns) == 0) { "PTY resize failed" }
     }
 
     fun sendSignal(signal: Int) {
         require(signal in 1..64)
-        check(nativeSignal(childPid, signal) == 0) { "PTY signal delivery failed" }
+        check(handle != 0L && nativeSignal(childPid, signal) == 0) { "PTY signal delivery failed" }
     }
 
     override fun close() {
-        nativeClose(fd, childPid)
+        val current = handle
+        if (current == 0L) return
+        handle = 0L
+        nativeClose(current.toInt(), (current ushr 32).toInt())
     }
 
     companion object {
