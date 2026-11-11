@@ -3,8 +3,6 @@ package org.anlr.linuxruntime
 import java.io.File
 import java.io.FileOutputStream
 import android.system.Os
-import java.io.IOException
-import java.security.MessageDigest
 import java.util.UUID
 
 /**
