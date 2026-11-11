@@ -28,7 +28,7 @@ internal class RuntimeStorageManager(filesDir: File) {
     private val logs = File(base, "logs")
     private val cache = File(base, "cache")
     private val activePointer = File(base, "rootfs/active-release")
-    private val activeRootLink = File(base, "rootfs/current")
+    private val activeRootLink = File(filesDir, "rootfs")
 
     fun initialize() {
         listOf(base, releases, staging, downloads, applications, logs, cache).forEach {
@@ -136,7 +136,7 @@ internal class RuntimeStorageManager(filesDir: File) {
         return id.takeIf { release.isDirectory && marker.isFile }
     }
 
-    /** Stable path for native Linux loaders: runtime/rootfs/current/rootfs contents. */
+    /** Stable ABI path expected by ANLR-patched glibc: filesDir/rootfs. */
     fun activeRootDirectory(): File? {
         val id = activeReleaseId() ?: return null
         val expected = File(child(releases, id), "rootfs")
@@ -150,7 +150,7 @@ internal class RuntimeStorageManager(filesDir: File) {
         validateId(releaseId)
         val temp = File(activeRootLink.parentFile, ".current-${UUID.randomUUID()}").toPath()
         try {
-            Files.createSymbolicLink(temp, Paths.get("releases/$releaseId/rootfs"))
+            Files.createSymbolicLink(temp, Paths.get("runtime/rootfs/releases/$releaseId/rootfs"))
             try {
                 Files.move(
                     temp, activeRootLink.toPath(),
