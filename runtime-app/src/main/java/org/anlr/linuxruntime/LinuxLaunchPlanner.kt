@@ -76,7 +76,7 @@ internal object LinuxLaunchPlanner {
         }
         val cwd = workingDirectory.canonicalFile
         require(cwd.isDirectory) { "Application working directory does not exist" }
-        val environment = mapOf(
+        val environment = mutableMapOf(
             "HOME" to canonicalRoot.absolutePath,
             "PATH" to listOf("bin", "usr/bin", "sbin", "usr/sbin")
                 .map { File(canonicalRoot, it) }
@@ -87,6 +87,11 @@ internal object LinuxLaunchPlanner {
             "TERM" to "xterm-256color",
             "ANLR_ROOTFS" to canonicalRoot.absolutePath
         )
+        if (backend == ExecutionBackend.NATIVE_ARM64) {
+            environment["FXD_ROOT"] = canonicalRoot.absolutePath
+            val pathShim = File(canonicalRoot, "usr/lib/fexdroid/libfxpath.so")
+            if (pathShim.isFile) environment["LD_PRELOAD"] = pathShim.absolutePath
+        }
         return LinuxLaunchPlan(backend, executable, commandArguments, cwd, environment, report)
     }
 }
