@@ -22,7 +22,7 @@ internal data class ExtractionResult(
 
 /**
  * Conservative tar.gz extractor for untrusted rootfs archives.
- * Absolute symlinks, devices, FIFOs, path traversal and writes through symlink parents are rejected.
+ * Guest-absolute symlinks are normalized inside rootfs; devices, FIFOs, traversal and symlink-parent writes are rejected.
  */
 internal object SafeRootfsExtractor {
     private const val BUFFER_SIZE = 64 * 1024
@@ -131,7 +131,7 @@ internal object SafeRootfsExtractor {
             "Absolute or invalid rootfs path rejected"
         }
         val relative = Paths.get(rawName).normalize()
-        require(!relative.isAbsolute && relative.none { it.toString() == ".." }) {
+        require(!relative.isAbsolute && relative.toString().isNotEmpty() && relative.none { it.toString() == ".." }) {
             "Rootfs archive path traversal rejected"
         }
         val resolved = root.resolve(relative).normalize()
@@ -171,6 +171,6 @@ internal object SafeRootfsExtractor {
             0x01 to PosixFilePermission.OTHERS_EXECUTE
         )
         bits.forEach { (bit, permission) -> if (mode and bit != 0) permissions.add(permission) }
-        runCatching { Files.setPosixFilePermissions(path, permissions) }
+        Files.setPosixFilePermissions(path, permissions)
     }
 }
