@@ -101,13 +101,13 @@ Java_org_anlr_linuxruntime_NativePty_nativeSpawn(
 
     pid_t pid = fork();
     if (pid == 0) {
-        setsid();
+        if (setsid() < 0) _exit(126);
         int slave = open(slave_name, O_RDWR);
         if (slave < 0) _exit(126);
-        ioctl(slave, TIOCSCTTY, 0);
-        dup2(slave, STDIN_FILENO);
-        dup2(slave, STDOUT_FILENO);
-        dup2(slave, STDERR_FILENO);
+        if (ioctl(slave, TIOCSCTTY, 0) != 0) _exit(126);
+        if (dup2(slave, STDIN_FILENO) < 0 ||
+            dup2(slave, STDOUT_FILENO) < 0 ||
+            dup2(slave, STDERR_FILENO) < 0) _exit(126);
         if (slave > STDERR_FILENO) close(slave);
         close(master);
         if (chdir(cwd) != 0) _exit(126);
@@ -154,6 +154,10 @@ Java_org_anlr_linuxruntime_NativePty_nativeWrite(
             env->ReleaseByteArrayElements(input, bytes, JNI_ABORT);
             return -error;
         }
+        if (count == 0) {
+            env->ReleaseByteArrayElements(input, bytes, JNI_ABORT);
+            return -EIO;
+        }
         total += count;
     }
     env->ReleaseByteArrayElements(input, bytes, JNI_ABORT);
@@ -190,6 +194,9 @@ Java_org_anlr_linuxruntime_NativePty_nativeClose(
             usleep(10 * 1000);
         }
         kill(-pid, SIGKILL);
-        waitpid(pid, &status, WNOHANG);
+        pid_t result;
+        do {
+            result = waitpid(pid, &status, 0);
+        } while (result < 0 && errno == EINTR);
     }
 }
