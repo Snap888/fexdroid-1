@@ -328,7 +328,7 @@ private fun AppsScreen(apps: List<ImportedApp>, onImport: () -> Unit, onLaunch: 
 @Composable
 private fun TerminalScreen(context: Context) {
     var command by remember { mutableStateOf("") }
-    var output by remember { mutableStateOf("ANLR Terminal · Android host diagnostic shell\nLinux guest shell пока не подключён.\n") }
+    var output by remember { mutableStateOf("ANLR Terminal · POSIX PTY\nВыберите Android host или установленный Linux guest.\n") }
     var busy by remember { mutableStateOf(false) }
     var pty by remember { mutableStateOf<NativePty?>(null) }
     var activeRootfs by remember { mutableStateOf<File?>(null) }
@@ -408,7 +408,7 @@ private fun TerminalScreen(context: Context) {
         }
         append("\n$ $cmd\n")
         if (cmd == "help") {
-            append("Команды: help, clear, device, rootfs, uname, id, pwd, ls [path]\nЗапустите PTY для интерактивного Android host shell. Debian guest пока недоступен.\n")
+            append("Команды: help, clear, device, rootfs, uname, id, pwd, ls [path]\nЗапустите Host PTY или Linux guest PTY.\n")
             return
         }
         if (cmd == "rootfs") {
@@ -452,7 +452,7 @@ private fun TerminalScreen(context: Context) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
             Column {
                 Text("Терминал", style = MaterialTheme.typography.headlineSmall)
-                Text(if (pty != null) "POSIX PTY · Android host" else "Android host · sandbox", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.tertiary)
+                Text(if (pty != null) "POSIX PTY · active session" else "Host / Linux guest", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.tertiary)
             }
             Row {
                 TextButton(onClick = { if (pty == null) startPty(false) else stopPty() }) {
@@ -508,7 +508,7 @@ private fun TerminalScreen(context: Context) {
             )
             TextButton(enabled = !busy, onClick = { submit() }) { Text(if (busy) "…" else "Выполнить") }
         }
-        Text("PTY, история, Ctrl+C и resize подключены для Android host shell. Это пока не Debian guest и не полноценный терминальный эмулятор ANSI.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("PTY, история, Ctrl+C и resize работают в host и guest PTY. Полноценный ANSI-терминальный эмулятор пока не подключён.", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
