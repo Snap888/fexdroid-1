@@ -43,9 +43,14 @@ internal object RootfsInstaller {
 
         val published = storage.releaseDirectory(manifest.releaseId)
         if (published != null) {
+            val publishedRoot = File(published, "rootfs")
+            check(publishedRoot.isDirectory &&
+                (File(publishedRoot, "bin/sh").exists() || File(publishedRoot, "usr/bin/sh").exists())) {
+                "Published rootfs is missing its Linux shell"
+            }
             storage.activate(manifest.releaseId, manifest.manifestSha256)
             return RootfsInstallResult(
-                manifest.releaseId, File(published, "rootfs"), 0, 0, manifest.manifestSha256
+                manifest.releaseId, publishedRoot, 0, 0, manifest.manifestSha256
             )
         }
 
