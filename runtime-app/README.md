@@ -82,3 +82,6 @@ The terminal still executes a bounded Android host diagnostic shell. It is not a
 ### Native PTY milestone
 
 The app now builds an arm64-v8a JNI PTY transport using POSIX master/slave pseudo-terminals. It supports process spawn, byte-stream read/write, terminal window-size ioctl, process-group signals and bounded child cleanup. The terminal screen currently uses it for an interactive **Android host** shell, with persisted command history, Ctrl+C and size updates. This is not yet a Debian guest shell and the text view is not a full ANSI terminal emulator. The guest launcher must be connected to this transport after the rootfs loader and device execution policy are validated.
+
+
+The native ARM64 guest launcher uses the rootfs-patched absolute ELF interpreter path when it resolves inside the active rootfs, and passes a clean guest environment through execve. A Debian guest PTY action is exposed when an active rootfs exists. This launch route still requires the ANLR-patched glibc/FEX payload produced by the repository's payload build; a stock Debian rootfs archive is not sufficient for Android's seccomp and absolute-path constraints.
