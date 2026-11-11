@@ -61,4 +61,21 @@ class ElfCompatibilityCheckerTest {
             root.deleteRecursively()
         }
     }
+    @Test fun acceptsAbsoluteInterpreterWhenItResolvesInsideActiveRootfs() {
+        val root = Files.createTempDirectory("anlr-compat-absolute-").toFile()
+        try {
+            val loader = File(root, "usr/lib/aarch64-linux-gnu/ld-linux-aarch64.so.1")
+            loader.parentFile.mkdirs()
+            loader.writeText("")
+            File(root, "usr/lib/aarch64-linux-gnu/libc.so.6").writeText("")
+            val report = ElfCompatibilityChecker.check(
+                elf(interpreter = loader.absolutePath), root, ExecutionBackend.NATIVE_ARM64
+            )
+            assertTrue(report.compatible)
+            assertEquals(loader.absolutePath, report.resolvedLibraries["PT_INTERP"])
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
 }
