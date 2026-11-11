@@ -50,7 +50,7 @@ internal object RootfsInstaller {
             }
             storage.activate(manifest.releaseId, manifest.manifestSha256)
             return RootfsInstallResult(
-                manifest.releaseId, publishedRoot, 0, 0, manifest.manifestSha256
+                manifest.releaseId, storage.activeRootDirectory() ?: publishedRoot, 0, 0, manifest.manifestSha256
             )
         }
 
@@ -82,7 +82,7 @@ internal object RootfsInstaller {
         storage.activate(manifest.releaseId, manifest.manifestSha256)
 
         return RootfsInstallResult(
-            manifest.releaseId, File(storage.releaseDirectory(manifest.releaseId)!!, "rootfs"),
+            manifest.releaseId, storage.activeRootDirectory() ?: File(storage.releaseDirectory(manifest.releaseId)!!, "rootfs"),
             extraction.entriesExtracted, extraction.bytesExtracted, manifest.manifestSha256
         )
     }
