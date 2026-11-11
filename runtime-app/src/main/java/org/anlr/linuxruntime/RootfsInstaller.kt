@@ -45,7 +45,8 @@ internal object RootfsInstaller {
         if (published != null) {
             val publishedRoot = File(published, "rootfs")
             check(publishedRoot.isDirectory &&
-                (File(publishedRoot, "bin/sh").exists() || File(publishedRoot, "usr/bin/sh").exists())) {
+                (File(publishedRoot, "bin/sh").exists() || File(publishedRoot, "usr/bin/sh").exists()) &&
+                File(publishedRoot, "usr/lib/anlr/runtime-abi").let { it.isFile && it.readText().trim() == manifest.runtimeAbi }) {
                 "Published rootfs is missing its Linux shell"
             }
             storage.activate(manifest.releaseId, manifest.manifestSha256)
@@ -61,7 +62,8 @@ internal object RootfsInstaller {
         if (storage.isStagingReleaseComplete(manifest.releaseId, manifest.manifestSha256)) {
             val stagedRoot = File(staging, "rootfs")
             check(stagedRoot.isDirectory &&
-                (File(stagedRoot, "bin/sh").exists() || File(stagedRoot, "usr/bin/sh").exists())) {
+                (File(stagedRoot, "bin/sh").exists() || File(stagedRoot, "usr/bin/sh").exists()) &&
+                File(stagedRoot, "usr/lib/anlr/runtime-abi").let { it.isFile && it.readText().trim() == manifest.runtimeAbi }) {
                 "Completed staging release is missing its Linux shell"
             }
             storage.activate(manifest.releaseId, manifest.manifestSha256)
