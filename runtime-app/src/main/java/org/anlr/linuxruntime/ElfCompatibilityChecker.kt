@@ -61,14 +61,17 @@ internal object ElfCompatibilityChecker {
         }
 
         elf.interpreter?.let { interpreter ->
+            val absolutePatched = runCatching { File(interpreter).canonicalFile }.getOrNull()
+            val patchedInsideRoot = absolutePatched != null &&
+                absolutePatched.toPath().startsWith(rootfs.canonicalFile.toPath()) &&
+                absolutePatched.isFile
             val relative = interpreter.removePrefix("/")
-            if (interpreter.startsWith("/") && relative.isNotBlank() &&
-                !relative.split("/").any { it == ".." } &&
-                File(rootfs, relative).isFile
-            ) {
-                resolved["PT_INTERP"] = File(rootfs, relative).absolutePath
-            } else {
-                reasons += "ELF interpreter is missing or unsafe: $interpreter"
+            val standardInsideRoot = interpreter.startsWith("/") && relative.isNotBlank() &&
+                !relative.split("/").any { it == ".." } && File(rootfs, relative).isFile
+            when {
+                patchedInsideRoot -> resolved["PT_INTERP"] = absolutePatched!!.absolutePath
+                standardInsideRoot -> resolved["PT_INTERP"] = File(rootfs, relative).absolutePath
+                else -> reasons += "ELF interpreter is missing or unsafe: $interpreter"
             }
         }
 
