@@ -89,7 +89,7 @@ private fun AnlrApp() {
             withContext(Dispatchers.IO) {
                 RuntimeStorageManager(context.filesDir).apply {
                     initialize()
-                    removeIncompleteStagingReleases()
+                    recoverStagingReleases()
                     AppFileImporter.cleanupPartialImports(context.filesDir)
                 }
             }
