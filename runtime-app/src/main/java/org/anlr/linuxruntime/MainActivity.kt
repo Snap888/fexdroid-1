@@ -85,6 +85,14 @@ private fun AnlrApp() {
     }
 
     LaunchedEffect(Unit) {
+        runCatching {
+            withContext(Dispatchers.IO) {
+                RuntimeStorageManager(context.filesDir).apply {
+                    initialize()
+                    removeIncompleteStagingReleases()
+                }
+            }
+        }.onFailure { notice = "Ошибка инициализации хранилища runtime: ${it.message}" }
         val array = runCatching { JSONArray(prefs.getString("apps", "[]")) }.getOrDefault(JSONArray())
         apps = (0 until array.length()).mapNotNull { i ->
             runCatching {
@@ -254,7 +262,18 @@ private fun AppsScreen(apps: List<ImportedApp>, onImport: () -> Unit, onLaunch: 
                             Text(app.name, style = MaterialTheme.typography.titleMedium)
                             Text(app.type, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             Text("${app.architecture} · ${app.sizeBytes / 1024} KB", style = MaterialTheme.typography.bodySmall)
+                            val integrity by produceState<String>("Проверка файла…", app.localPath, app.sha256) {
+                                value = withContext(Dispatchers.IO) {
+                                    when {
+                                        app.localPath.isBlank() || app.sha256.isBlank() -> "Старая запись · контрольная сумма отсутствует"
+                                        !File(app.localPath).isFile -> "Файл отсутствует"
+                                        AppFileImporter.verify(File(app.localPath), app.sha256) -> "Целостность: SHA-256 совпадает"
+                                        else -> "ОШИБКА: файл изменён или повреждён"
+                                    }
+                                }
+                            }
                             Text("SHA-256: ${app.sha256.take(20)}…", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            Text(integrity, style = MaterialTheme.typography.bodySmall, color = if (integrity.startsWith("ОШИБКА")) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
                             Text(if (app.executableCandidate) "Файл-кандидат на запуск · запуск пока отключён" else "Требуется обработчик формата · запуск отключён", style = MaterialTheme.typography.bodySmall)
                             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                                 Button(onClick = { onLaunch(app) }) { Text("Запустить") }
