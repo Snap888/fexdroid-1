@@ -1,5 +1,6 @@
 package org.anlr.linuxruntime
 
+import android.content.Context
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
@@ -142,7 +143,7 @@ private fun AnlrApp() {
             when (selectedTab) {
                 0 -> HomeScreen(onApps = { selectedTab = 1 }, onTerminal = { selectedTab = 2 }, onDesktop = { selectedTab = 3 })
                 1 -> AppsScreen(apps, onImport = { picker.launch(arrayOf("*/*")) }, onLaunch = { notice = "Runtime ещё не установлен. Импорт приложения сохранён; запуск будет доступен после установки FEX/Box64 и rootfs." }, onRemove = { id -> persist(apps.filterNot { it.id == id }) })
-                2 -> TerminalScreen()
+                2 -> TerminalScreen(context)
                 else -> DesktopScreen()
             }
         }
@@ -233,7 +234,7 @@ private fun AppsScreen(apps: List<ImportedApp>, onImport: () -> Unit, onLaunch: 
 }
 
 @Composable
-private fun TerminalScreen() {
+private fun TerminalScreen(context: Context) {
     var command by remember { mutableStateOf("") }
     var output by remember { mutableStateOf("ANLR Terminal · Android host diagnostic shell\nLinux guest shell станет доступен после установки rootfs.\nВведите help для списка команд ANLR.\n") }
     var busy by remember { mutableStateOf(false) }
@@ -261,13 +262,24 @@ private fun TerminalScreen() {
         scope.launch {
             val result = withContext(Dispatchers.IO) {
                 runCatching {
-                    val process = ProcessBuilder("/system/bin/sh", "-c", cmd)
-                        .directory(File("/data/user/0/org.anlr.linuxruntime"))
-                        .redirectErrorStream(true).start()
-                    val text = process.inputStream.bufferedReader().use { it.readText() }
-                    val done = process.waitFor(12, TimeUnit.SECONDS)
-                    if (!done) { process.destroyForcibly(); "Command timed out after 12 seconds\n" }
-                    else (text.ifBlank { "(no output)\n" } + "\n[exit ${process.exitValue()}]\n")
+                    val logFile = File(context.cacheDir, "terminal-${UUID.randomUUID()}.log")
+                    try {
+                        val process = ProcessBuilder("/system/bin/sh", "-c", cmd)
+                            .directory(context.filesDir)
+                            .redirectOutput(logFile)
+                            .redirectErrorStream(true)
+                            .start()
+                        val done = process.waitFor(12, TimeUnit.SECONDS)
+                        if (!done) {
+                            process.destroyForcibly()
+                            process.waitFor(2, TimeUnit.SECONDS)
+                        }
+                        val text = logFile.takeIf { it.exists() }?.readText()?.take(12000).orEmpty()
+                        if (!done) "Command timed out after 12 seconds\\n${text}"
+                        else (text.ifBlank { "(no output)\\n" } + "\\n[exit ${process.exitValue()}]\\n")
+                    } finally {
+                        logFile.delete()
+                    }
                 }.getOrElse { "Error: ${it.message}\n" }
             }
             output += result
