@@ -25,7 +25,7 @@ class RuntimeStorageManagerTest {
             assertEquals("debian-arm64-v1", manager.activeReleaseId())
             assertTrue(manager.releaseDirectory("debian-arm64-v1")!!.isDirectory)
             assertTrue(manager.activeRootDirectory()!!.isDirectory)
-            assertTrue(Files.isSymbolicLink(File(root, "runtime/rootfs/current").toPath()))
+            assertTrue(Files.isSymbolicLink(File(root, "rootfs").toPath()))
         } finally {
             root.deleteRecursively()
         }
