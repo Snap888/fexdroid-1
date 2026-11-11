@@ -75,29 +75,46 @@ internal object AppFileImporter {
 
     private fun inspect(file: File, sha256: String, size: Long, name: String): ImportedFile {
         val header = ByteArray(20)
-        val read = FileInputStream(file).use { it.read(header) }
-        val isElf = read >= 20 &&
+        val read = FileInputStream(file).use { input ->
+            var offset = 0
+            while (offset < header.size) {
+                val count = input.read(header, offset, header.size - offset)
+                if (count < 0) break
+                offset += count
+            }
+            offset
+        }
+        val hasElfMagic = read >= 20 &&
             header[0] == 0x7f.toByte() && header[1] == 'E'.code.toByte() &&
             header[2] == 'L'.code.toByte() && header[3] == 'F'.code.toByte()
+        val elfClass = if (hasElfMagic) header[4].toInt() and 0xff else 0
+        val byteOrder = if (hasElfMagic) header[5].toInt() and 0xff else 0
+        val isElf = hasElfMagic && elfClass in 1..2 && byteOrder in 1..2
         val machine = if (isElf) {
-            val littleEndian = header[5].toInt() == 1
             val lo = header[18].toInt() and 0xff
             val hi = header[19].toInt() and 0xff
-            if (littleEndian) lo or (hi shl 8) else (lo shl 8) or hi
+            if (byteOrder == 1) lo or (hi shl 8) else (lo shl 8) or hi
         } else -1
+        val elfType = if (isElf) {
+            val lo = header[16].toInt() and 0xff
+            val hi = header[17].toInt() and 0xff
+            if (byteOrder == 1) lo or (hi shl 8) else (lo shl 8) or hi
+        } else 0
 
-        val architecture = when (machine) {
-            3 -> "x86 (32-bit)"
-            40 -> "ARM (32-bit)"
+        val archName = when (machine) {
+            3 -> "x86"
+            40 -> "ARM"
             62 -> "x86-64"
             183 -> "AArch64"
             243 -> "RISC-V"
             else -> if (isElf) "ELF machine $machine" else "Unknown"
         }
+        val architecture = if (isElf) "$archName · ELF${if (elfClass == 2) "64" else "32"}" else "Unknown"
+        val elfLoadable = isElf && elfType in 2..3
         val lower = name.lowercase()
         val (format, candidate) = when {
-            isElf && lower.endsWith(".appimage") -> "AppImage · ELF" to true
-            isElf -> "ELF executable" to true
+            isElf && lower.endsWith(".appimage") -> "AppImage · ELF" to elfLoadable
+            isElf -> "ELF binary" to elfLoadable
             lower.endsWith(".sh") -> "Shell script (review before execution)" to true
             lower.endsWith(".desktop") -> "Desktop entry (not executable)" to false
             lower.endsWith(".deb") -> "Debian package" to false
