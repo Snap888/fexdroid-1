@@ -65,4 +65,27 @@ class RuntimeStorageManagerTest {
             root.deleteRecursively()
         }
     }
+
+    @Test fun persistsJournalAndRecoversActivationAfterDirectoryRename() {
+        val root = Files.createTempDirectory("anlr-recovery-").toFile()
+        try {
+            val manager = RuntimeStorageManager(root)
+            val staged = manager.createStagingRelease("debian-recovery")
+            val checksum = digest("signed-manifest")
+            manager.updateStagingJournal("debian-recovery", checksum, RootfsInstallPhase.DOWNLOADING)
+            val journal = manager.stagingJournal("debian-recovery")!!
+            assertEquals(checksum, journal.manifestSha256)
+            assertEquals(RootfsInstallPhase.DOWNLOADING, journal.phase)
+
+            File(staged, "rootfs").mkdirs()
+            manager.markComplete("debian-recovery", checksum)
+            val published = File(root, "runtime/rootfs/releases/debian-recovery")
+            assertTrue(staged.renameTo(published))
+            manager.activate("debian-recovery", checksum)
+            assertEquals("debian-recovery", manager.activeReleaseId())
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
 }
