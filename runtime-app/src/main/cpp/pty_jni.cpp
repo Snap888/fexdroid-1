@@ -2,6 +2,7 @@
 #include <cerrno>
 #include <cstdint>
 #include <string>
+#include <map>
 #include <csignal>
 #include <cstdlib>
 #include <cstring>
@@ -13,6 +14,8 @@
 #include <unistd.h>
 #include <vector>
 
+extern char** environ;
+
 static jlong pack_handle(pid_t pid, int fd) {
     return (static_cast<jlong>(static_cast<uint32_t>(pid)) << 32) |
            static_cast<uint32_t>(fd);
@@ -21,7 +24,7 @@ static jlong pack_handle(pid_t pid, int fd) {
 extern "C" JNIEXPORT jlong JNICALL
 Java_org_anlr_linuxruntime_NativePty_nativeSpawn(
     JNIEnv* env, jobject, jstring executable, jobjectArray arguments,
-    jstring working_directory, jint rows, jint columns) {
+    jstring working_directory, jint rows, jint columns, jobjectArray environment) {
     if (!executable || !working_directory || rows < 1 || columns < 1) return 0;
     const char* exe = env->GetStringUTFChars(executable, nullptr);
     const char* cwd = env->GetStringUTFChars(working_directory, nullptr);
@@ -47,6 +50,34 @@ Java_org_anlr_linuxruntime_NativePty_nativeSpawn(
     std::vector<char*> argv;
     for (auto& value : args) argv.push_back(value.data());
     argv.push_back(nullptr);
+
+    std::map<std::string, std::string> env_map;
+    for (char** item = environ; item && *item; ++item) {
+        std::string entry(*item);
+        const auto separator = entry.find('=');
+        if (separator != std::string::npos && separator > 0)
+            env_map[entry.substr(0, separator)] = entry.substr(separator + 1);
+    }
+    const jsize env_count = environment ? env->GetArrayLength(environment) : 0;
+    for (jsize i = 0; i < env_count; ++i) {
+        auto item = static_cast<jstring>(env->GetObjectArrayElement(environment, i));
+        if (!item) continue;
+        const char* value = env->GetStringUTFChars(item, nullptr);
+        if (value) {
+            std::string entry(value);
+            const auto separator = entry.find('=');
+            if (separator != std::string::npos && separator > 0)
+                env_map[entry.substr(0, separator)] = entry.substr(separator + 1);
+            env->ReleaseStringUTFChars(item, value);
+        }
+        env->DeleteLocalRef(item);
+    }
+    std::vector<std::string> env_storage;
+    std::vector<char*> envp;
+    env_storage.reserve(env_map.size());
+    for (const auto& pair : env_map) env_storage.push_back(pair.first + "=" + pair.second);
+    for (auto& value : env_storage) envp.push_back(value.data());
+    envp.push_back(nullptr);
 
     int master = posix_openpt(O_RDWR | O_NOCTTY | O_CLOEXEC);
     if (master < 0 || grantpt(master) != 0 || unlockpt(master) != 0) {
@@ -80,7 +111,7 @@ Java_org_anlr_linuxruntime_NativePty_nativeSpawn(
         if (slave > STDERR_FILENO) close(slave);
         close(master);
         if (chdir(cwd) != 0) _exit(126);
-        execv(exe, argv.data());
+        execve(exe, argv.data(), envp.data());
         _exit(errno == ENOENT ? 127 : 126);
     }
 
