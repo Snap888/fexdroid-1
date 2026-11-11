@@ -2,7 +2,9 @@ package org.anlr.linuxruntime
 
 import java.io.File
 import java.io.FileOutputStream
-import android.system.Os
+import java.nio.file.Files
+import java.nio.file.Paths
+import java.nio.file.StandardCopyOption
 import java.util.UUID
 
 /**
@@ -136,12 +138,19 @@ internal class RuntimeStorageManager(filesDir: File) {
 
     private fun updateActiveRootLink(releaseId: String) {
         validateId(releaseId)
-        val temp = File(activeRootLink.parentFile, ".current-${UUID.randomUUID()}")
+        val temp = File(activeRootLink.parentFile, ".current-${UUID.randomUUID()}").toPath()
         try {
-            Os.symlink("releases/$releaseId/rootfs", temp.path)
-            Os.rename(temp.path, activeRootLink.path)
+            Files.createSymbolicLink(temp, Paths.get("releases/$releaseId/rootfs"))
+            try {
+                Files.move(
+                    temp, activeRootLink.toPath(),
+                    StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING
+                )
+            } catch (_: java.nio.file.AtomicMoveNotSupportedException) {
+                Files.move(temp, activeRootLink.toPath(), StandardCopyOption.REPLACE_EXISTING)
+            }
         } finally {
-            runCatching { Os.unlink(temp.path) }
+            runCatching { Files.deleteIfExists(temp) }
         }
     }
 
