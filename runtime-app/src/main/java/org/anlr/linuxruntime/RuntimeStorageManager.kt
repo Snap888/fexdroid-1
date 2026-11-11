@@ -79,6 +79,16 @@ internal class RuntimeStorageManager(filesDir: File) {
         return RootfsStagingJournal(releaseId, lines[0].lowercase(), phase)
     }
 
+    fun isStagingReleaseComplete(releaseId: String, expectedManifestSha256: String): Boolean {
+        validateId(releaseId)
+        if (!expectedManifestSha256.matches(Regex("[a-fA-F0-9]{64}"))) return false
+        val directory = child(staging, releaseId)
+        val marker = File(directory, COMPLETE_MARKER)
+        if (!directory.isDirectory || !marker.isFile) return false
+        return runCatching { marker.readText().trim().equals(expectedManifestSha256, ignoreCase = true) }
+            .getOrDefault(false)
+    }
+
     /** Mark only after the caller has extracted and independently verified the payload. */
     fun markComplete(releaseId: String, manifestSha256: String) {
         validateId(releaseId)
