@@ -59,6 +59,10 @@ install -D -m 0755 build/fxshmd/shmtest "$A/opt/fexdroid-tests/shmtest"
 install -D -m 0755 build/fxshmd/semtest "$A/opt/fexdroid-tests/semtest"
 # Directories glibc was built to use instead of /tmp, /dev/shm, /etc.
 mkdir -p "$A/tmp" "$A/var/tmp" "$A/dev/shm" "$A/home"
+# Machine-readable ABI marker consumed by the independent ANLR installer.
+install -D -m 0644 /dev/null "$A/usr/lib/anlr/runtime-abi"
+printf '%s\\n' 'anlr-glibc-v1' > "$A/usr/lib/anlr/runtime-abi"
+printf '%s\\n' "$FXD_ROOT" > "$A/usr/lib/anlr/runtime-root"
 # Empty sysfs PCI tree FEX shows guests as /sys/bus/pci (patches/fex/0002, NOTES.md N-028).
 mkdir -p "$A/usr/share/fex-emu/fexdroid-empty-pci/devices" "$A/usr/share/fex-emu/fexdroid-empty-pci/drivers"
 chmod 1777 "$A/tmp" "$A/var/tmp" "$A/dev/shm"
