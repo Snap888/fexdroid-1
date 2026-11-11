@@ -45,3 +45,14 @@ APK: `runtime-app/build/outputs/apk/debug/runtime-app-debug.apk`
 
 
 CI note: changes to this module trigger the ANLR APK workflow, which publishes the debug APK as a GitHub Actions artifact.
+
+## App interface milestone
+
+The Compose app now has four bottom-navigation destinations: Home, Applications, Terminal and XFCE4.
+
+- Applications: import a Linux file through Android's document picker, persist its URI and metadata, select it for launch (launch remains honestly gated until a runtime backend/rootfs is installed), and remove entries.
+- Terminal: a command console with history in the current view, built-in ANLR commands and a 12-second-bounded Android app-sandbox shell. This is explicitly not yet a Linux guest TTY.
+- XFCE4: persistent session profile controls for resolution, UI scale and fullscreen/windowed mode. Starting XFCE remains gated until rootfs, X server and input/audio bridges are implemented.
+- Home: device compatibility summary and shortcuts.
+
+The terminal command runner is a diagnostic app-sandbox shell, not a security boundary for untrusted commands. Do not expose it as a remote shell. Linux guest terminal must be a separate backend once the rootfs exists.
