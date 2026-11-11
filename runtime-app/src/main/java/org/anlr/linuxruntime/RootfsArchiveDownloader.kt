@@ -87,12 +87,10 @@ internal object RootfsArchiveDownloader {
                     HttpURLConnection.HTTP_OK -> false
                     HttpURLConnection.HTTP_PARTIAL -> {
                         val contentRange = connection.getHeaderField("Content-Range") ?: ""
-                        val match = Regex("bytes (\\d+)-(\\d+)/(\\d+)").matchEntire(contentRange)
-                            ?: error("Invalid Content-Range for resumed rootfs download")
-                        check(match.groupValues[1].toLong() == offset) { "Server resumed at wrong byte offset" }
-                        check(match.groupValues[3].toLong() == manifest.archiveSizeBytes) {
-                            "Server returned an unexpected archive size"
-                        }
+                        val contentLength = connection.getHeaderFieldLong("Content-Length", -1L)
+                        validateContentRange(
+                            contentRange, offset, manifest.archiveSizeBytes, contentLength
+                        )
                         true
                     }
                     else -> error("Rootfs download failed with HTTP $status")
@@ -134,8 +132,44 @@ internal object RootfsArchiveDownloader {
             partial, manifest.archiveSizeBytes, manifest.archiveSha256,
             manifest.archiveSizeBytes
         )
-        if (completed.exists()) check(completed.delete()) { "Cannot replace old rootfs archive" }
-        check(partial.renameTo(completed)) { "Cannot publish downloaded rootfs archive" }
+        try {
+            Files.move(
+                partial.toPath(), completed.toPath(),
+                StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING
+            )
+        } catch (_: AtomicMoveNotSupportedException) {
+            Files.move(partial.toPath(), completed.toPath(), StandardCopyOption.REPLACE_EXISTING)
+        }
         return completed
+    }
+
+    /**
+     * A request for bytes=offset- must be answered with the complete remaining
+     * interval. Reject truncated or internally inconsistent 206 responses before
+     * appending them; the verified prefix remains available for a later retry.
+     */
+    internal fun validateContentRange(
+        header: String,
+        expectedOffset: Long,
+        expectedTotal: Long,
+        contentLength: Long
+    ) {
+        val match = Regex("bytes (\\d+)-(\\d+)/(\\d+)").matchEntire(header)
+            ?: error("Invalid Content-Range for resumed rootfs download")
+        val start = match.groupValues[1].toLongOrNull()
+            ?: error("Invalid Content-Range start")
+        val end = match.groupValues[2].toLongOrNull()
+            ?: error("Invalid Content-Range end")
+        val total = match.groupValues[3].toLongOrNull()
+            ?: error("Invalid Content-Range total")
+        check(start == expectedOffset) { "Server resumed at wrong byte offset" }
+        check(total == expectedTotal) { "Server returned an unexpected archive size" }
+        check(end == expectedTotal - 1 && end >= start) {
+            "Server returned an incomplete or invalid byte range"
+        }
+        val expectedLength = end - start + 1
+        check(contentLength < 0 || contentLength == expectedLength) {
+            "Rootfs Content-Length does not match Content-Range"
+        }
     }
 }
