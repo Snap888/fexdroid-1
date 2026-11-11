@@ -275,8 +275,8 @@ private fun TerminalScreen(context: Context) {
                             process.waitFor(2, TimeUnit.SECONDS)
                         }
                         val text = logFile.takeIf { it.exists() }?.readText()?.take(12000).orEmpty()
-                        if (!done) "Command timed out after 12 seconds\\n${text}"
-                        else (text.ifBlank { "(no output)\\n" } + "\\n[exit ${process.exitValue()}]\\n")
+                        if (!done) "Command timed out after 12 seconds\n${text}"
+                        else (text.ifBlank { "(no output)\n" } + "\n[exit ${process.exitValue()}]\n")
                     } finally {
                         logFile.delete()
                     }
