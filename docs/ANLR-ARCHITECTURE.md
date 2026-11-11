@@ -69,3 +69,12 @@ The app-private directory layout and atomic active-rootfs pointer are implemente
 ## ELF compatibility preflight
 
 The import scanner now reads ELF program headers and dynamic metadata to record PT_INTERP and DT_NEEDED. This is diagnostic metadata only; dependency resolution against the installed rootfs, symbol-version compatibility, ABI checks and execution remain future work.
+
+
+## Guest launch and PTY update
+
+The active ARM64 rootfs is exposed at `filesDir/rootfs`, the stable absolute path compiled into ANLR-patched glibc for `org.anlr.linuxruntime`. The signed rootfs manifest now includes both `expandedSizeBytes` and `runtimeAbi=anlr-glibc-v1`; stock Debian archives are rejected. The payload build writes the matching ABI marker. Rootfs extraction verifies this marker before activation.
+
+`LinuxLaunchPlanner` performs backend-specific ELF architecture, PT_INTERP and DT_NEEDED checks and builds an explicit launch vector. It understands both ordinary guest-relative ELF interpreters and the absolute loader path rewritten by `scripts/lib/fix-elf.py`. `LinuxGuestSession` feeds the resulting process vector and clean guest environment to the native PTY.
+
+The NDK PTY transport now supports a controlling terminal, process-group signals, byte I/O, terminal resize and child cleanup. The UI can start an ARM64 guest PTY when a compatible active rootfs exists. Device execution is still unverified; the production rootfs payload must be built with `FXD_PACKAGE=org.anlr.linuxruntime` so its compiled paths match this app. The current text view is not yet a full ANSI terminal emulator.
