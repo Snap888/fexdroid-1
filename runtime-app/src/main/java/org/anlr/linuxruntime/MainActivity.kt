@@ -320,23 +320,13 @@ private fun TerminalScreen(context: Context) {
         scope.launch {
             val result = withContext(Dispatchers.IO) {
                 runCatching {
-                    val logFile = File(context.cacheDir, "terminal-${UUID.randomUUID()}.log")
-                    try {
-                        val process = ProcessBuilder("/system/bin/sh", "-c", cmd)
-                            .directory(context.filesDir)
-                            .redirectOutput(logFile)
-                            .redirectErrorStream(true)
-                            .start()
-                        val done = process.waitFor(12, TimeUnit.SECONDS)
-                        if (!done) {
-                            process.destroyForcibly()
-                            process.waitFor(2, TimeUnit.SECONDS)
-                        }
-                        val text = logFile.takeIf { it.exists() }?.readText()?.take(12000).orEmpty()
-                        if (!done) "Command timed out after 12 seconds\n${text}"
-                        else (text.ifBlank { "(no output)\n" } + "\n[exit ${process.exitValue()}]\n")
-                    } finally {
-                        logFile.delete()
+                    val result = HostCommandRunner.run(cmd, context.filesDir)
+                    buildString {
+                        append(result.output.ifBlank { "(no output)" })
+                        if (result.timedOut) append("\\nCommand timed out after 12 seconds")
+                        if (result.truncated) append("\\n[output truncated at 12 KiB; process stopped]")
+                        result.exitCode?.let { append("\\n[exit $it]") }
+                        append('\\n')
                     }
                 }.getOrElse { "Error: ${it.message}\n" }
             }
