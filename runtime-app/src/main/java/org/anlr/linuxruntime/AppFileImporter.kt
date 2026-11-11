@@ -79,5 +79,23 @@ internal object AppFileImporter {
         return ImportedFile(file, sha256, size, format, elf?.architecture ?: "Unknown", candidate)
     }
 
+    fun verify(file: File, expectedSha256: String): Boolean {
+        if (!file.isFile || !expectedSha256.matches(Regex("[a-fA-F0-9]{64}"))) return false
+        val digest = MessageDigest.getInstance("SHA-256")
+        FileInputStream(file).use { input ->
+            val buffer = ByteArray(DEFAULT_BUFFER_SIZE)
+            while (true) {
+                val count = input.read(buffer)
+                if (count < 0) break
+                digest.update(buffer, 0, count)
+            }
+        }
+        val actual = digest.digest().toHex()
+        return MessageDigest.isEqual(
+            actual.toByteArray(Charsets.US_ASCII),
+            expectedSha256.lowercase().toByteArray(Charsets.US_ASCII)
+        )
+    }
+
     private fun ByteArray.toHex(): String = joinToString("") { "%02x".format(it.toInt() and 0xff) }
 }
