@@ -376,6 +376,7 @@ private fun TerminalScreen(context: Context) {
             } catch (_: Exception) {
                 // Closing the PTY intentionally unblocks the reader.
             } finally {
+                runCatching { session.close() }
                 withContext(Dispatchers.Main) {
                     if (pty === session) {
                         pty = null
