@@ -77,3 +77,8 @@ RootfsManifestVerifier now verifies detached Ed25519 signatures over the exact m
 ### Current execution boundary
 
 The terminal still executes a bounded Android host diagnostic shell. It is not a Debian shell and is not a PTY. There is no Linux guest launcher, FEX/Box64 payload, terminal resize/signal bridge, XFCE display server, input/audio/clipboard bridge, or enabled imported-app execution path. The rootfs installer core is not exposed as a user-facing install action until a maintainer supplies a pinned production Ed25519 public key and a signed manifest endpoint.
+
+
+### Native PTY milestone
+
+The app now builds an arm64-v8a JNI PTY transport using POSIX master/slave pseudo-terminals. It supports process spawn, byte-stream read/write, terminal window-size ioctl, process-group signals and bounded child cleanup. The terminal screen currently uses it for an interactive **Android host** shell, with persisted command history, Ctrl+C and size updates. This is not yet a Debian guest shell and the text view is not a full ANSI terminal emulator. The guest launcher must be connected to this transport after the rootfs loader and device execution policy are validated.
