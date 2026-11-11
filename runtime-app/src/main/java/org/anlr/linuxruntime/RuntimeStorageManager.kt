@@ -2,7 +2,10 @@ package org.anlr.linuxruntime
 
 import java.io.File
 import java.io.FileOutputStream
+import android.system.Os
+import java.io.IOException
 import java.security.MessageDigest
+import java.util.UUID
 
 /**
  * App-private release layout and atomic rootfs activation.
@@ -25,6 +28,7 @@ internal class RuntimeStorageManager(filesDir: File) {
     private val logs = File(base, "logs")
     private val cache = File(base, "cache")
     private val activePointer = File(base, "rootfs/active-release")
+    private val activeRootLink = File(base, "rootfs/current")
 
     fun initialize() {
         listOf(base, releases, staging, downloads, applications, logs, cache).forEach {
@@ -108,6 +112,9 @@ internal class RuntimeStorageManager(filesDir: File) {
             if (movedNow) released.renameTo(staged)
             throw error
         }
+        // The pointer is authoritative. The stable current symlink is a recoverable
+        // materialized path for native loaders whose ELF interpreter is absolute.
+        updateActiveRootLink(releaseId)
     }
 
     fun activeReleaseId(): String? {
@@ -117,6 +124,27 @@ internal class RuntimeStorageManager(filesDir: File) {
         val release = child(releases, id)
         val marker = File(release, COMPLETE_MARKER)
         return id.takeIf { release.isDirectory && marker.isFile }
+    }
+
+    /** Stable path for native Linux loaders: runtime/rootfs/current/rootfs contents. */
+    fun activeRootDirectory(): File? {
+        val id = activeReleaseId() ?: return null
+        val expected = File(child(releases, id), "rootfs")
+        if (!expected.isDirectory) return null
+        updateActiveRootLink(id)
+        val resolved = runCatching { activeRootLink.canonicalFile }.getOrNull() ?: return null
+        return resolved.takeIf { it == expected.canonicalFile && it.isDirectory }
+    }
+
+    private fun updateActiveRootLink(releaseId: String) {
+        validateId(releaseId)
+        val temp = File(activeRootLink.parentFile, ".current-${UUID.randomUUID()}")
+        try {
+            Os.symlink("releases/$releaseId/rootfs", temp.path)
+            Os.rename(temp.path, activeRootLink.path)
+        } finally {
+            runCatching { Os.unlink(temp.path) }
+        }
     }
 
     fun releaseDirectory(releaseId: String): File? {
