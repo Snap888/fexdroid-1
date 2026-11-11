@@ -33,3 +33,15 @@ The app is tightly coupled to Steam/game workflows and its glibc payload expects
 ## First implementation scope
 
 The `:runtime-app` module is independent. The first commit adds a launcher and truthful hardware reconnaissance only. Next, port device probes into a testable library and create the rootfs installer contract before introducing multi-gigabyte native payloads.
+
+## User interface milestone
+
+The independent app exposes Home, Applications, Terminal and XFCE4 screens. The application library stores SAF document URIs and metadata; execution is deliberately disabled until the runtime installer and process backend exist. The current terminal runs commands through Android's app-private `/system/bin/sh` with a bounded execution time and is not a Linux guest terminal/PTY. XFCE settings are persisted as a session profile; no XFCE process is launched yet.
+
+## Next implementation tasks
+
+1. Add a rootfs/runtime service interface and a real guest-shell process API.
+2. Copy imported documents into managed app-private runtime storage with checksum, ELF magic/architecture detection and executable metadata.
+3. Implement persistent interactive PTY (resize, stdin/stdout, Ctrl-C, process lifecycle) for the guest terminal.
+4. Install XFCE4 packages into ARM64 rootfs and launch `startxfce4` through a real X11/XWayland display session.
+5. Add session surface, clipboard, keyboard, pointer, touch and audio integration.
