@@ -79,6 +79,23 @@ internal object AppFileImporter {
         return ImportedFile(file, sha256, size, format, elf?.architecture ?: "Unknown", candidate)
     }
 
+    fun deleteManagedCopy(filesDir: File, path: String): Boolean {
+        val managedDir = File(filesDir, "imported-apps").canonicalFile
+        val candidate = File(path).canonicalFile
+        if (candidate.parentFile != managedDir || !candidate.isFile) return false
+        return candidate.delete()
+    }
+
+    fun cleanupPartialImports(filesDir: File): Int {
+        val managedDir = File(filesDir, "imported-apps")
+        if (!managedDir.isDirectory) return 0
+        var removed = 0
+        managedDir.listFiles()?.filter { it.isFile && it.name.startsWith(".") && it.name.endsWith(".part") }?.forEach {
+            if (it.delete()) removed++
+        }
+        return removed
+    }
+
     fun verify(file: File, expectedSha256: String): Boolean {
         if (!file.isFile || !expectedSha256.matches(Regex("[a-fA-F0-9]{64}"))) return false
         val digest = MessageDigest.getInstance("SHA-256")
