@@ -51,7 +51,7 @@ CI note: changes to this module trigger the ANLR APK workflow, which publishes t
 The Compose app now has four bottom-navigation destinations: Home, Applications, Terminal and XFCE4.
 
 - Applications: import a Linux file through Android's document picker, persist its URI and metadata, select it for launch (launch remains honestly gated until a runtime backend/rootfs is installed), and remove entries.
-- Terminal: a command console with history in the current view, built-in ANLR commands and a 12-second-bounded Android app-sandbox shell. This is explicitly not yet a Linux guest TTY.
+- Terminal: a command console with history in the current view, built-in ANLR commands and a 12-second-bounded Android app-sandbox shell with timeout enforcement that does not block while draining a pipe. This is explicitly not yet a Linux guest TTY; command history and PTY support are not implemented.
 - XFCE4: persistent session profile controls for resolution, UI scale and fullscreen/windowed mode. Starting XFCE remains gated until rootfs, X server and input/audio bridges are implemented.
 - Home: device compatibility summary and shortcuts.
 
