@@ -34,11 +34,13 @@ jobs:
           # AGP installs the compileSdk platform itself when missing; try it here first.
           "$SDKM" --install "platforms;android-37" >/dev/null || true
 
-      - name: Build debug APKs (legacy + modern)
-        run: ./gradlew --no-daemon --stacktrace assembleLegacyDebug assembleModernDebug
+      - name: Build FEXDroid and independent ANLR debug APKs
+        run: ./gradlew --no-daemon --stacktrace assembleLegacyDebug assembleModernDebug :runtime-app:assembleDebug
 
       - uses: actions/upload-artifact@v4
         with:
-          name: fexdroid-apks-no-payload
-          path: app/build/outputs/apk/**/*.apk
+          name: android-runtime-apks-no-linux-payload
+          path: |
+            app/build/outputs/apk/**/*.apk
+            runtime-app/build/outputs/apk/**/*.apk
           if-no-files-found: error
