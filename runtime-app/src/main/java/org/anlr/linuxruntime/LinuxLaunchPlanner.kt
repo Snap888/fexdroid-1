@@ -48,6 +48,7 @@ internal object LinuxLaunchPlanner {
         when (backend) {
             ExecutionBackend.NATIVE_ARM64 -> {
                 if (elf.interpreter == null) {
+                    check(binary.canExecute()) { "Static native ELF does not have execute permission" }
                     executable = binary
                     commandArguments = arguments
                 } else {
