@@ -37,7 +37,7 @@ internal object SafeRootfsExtractor {
         check(destination.exists() || destination.mkdirs()) { "Cannot create rootfs staging directory" }
         val root = destination.canonicalFile.toPath()
         check(Files.isDirectory(root, LinkOption.NOFOLLOW_LINKS)) { "Rootfs destination is not a directory" }
-        check(Files.list(root).use { !it.findAny().isPresent }) { "Rootfs destination must be empty" }
+        check(destination.listFiles()?.isEmpty() == true) { "Rootfs destination must be empty" }
 
         var entries = 0
         var files = 0
@@ -140,6 +140,7 @@ internal object SafeRootfsExtractor {
             current = current.resolve(segment)
             if (!Files.exists(current, LinkOption.NOFOLLOW_LINKS)) {
                 Files.createDirectory(current)
+                applyMode(current, 0x1ed)
             } else {
                 check(Files.isDirectory(current, LinkOption.NOFOLLOW_LINKS) &&
                     !Files.isSymbolicLink(current)) { "Rootfs archive attempts to write through a symlink" }
