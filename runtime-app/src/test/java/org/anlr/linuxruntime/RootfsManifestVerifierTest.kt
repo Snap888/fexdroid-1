@@ -20,6 +20,7 @@ class RootfsManifestVerifierTest {
             .put("keyId", "anlr-test-key")
             .put("releaseId", "debian-arm64-test")
             .put("architecture", architecture)
+            .put("runtimeAbi", "anlr-glibc-v1")
             .put("archiveFormat", "tar.gz")
             .put("downloadUrl", "https://downloads.example.org/debian-rootfs.tar.gz")
             .put("archiveSizeBytes", 1234)
@@ -45,6 +46,7 @@ class RootfsManifestVerifierTest {
         )
         assertEquals("debian-arm64-test", result.releaseId)
         assertEquals("aarch64", result.architecture)
+        assertEquals("anlr-glibc-v1", result.runtimeAbi)
         assertEquals(1234L, result.archiveSizeBytes)
         assertEquals(8192L, result.expandedSizeBytes)
         assertEquals("a".repeat(64), result.archiveSha256)
@@ -96,6 +98,18 @@ class RootfsManifestVerifierTest {
         assertThrows(IllegalArgumentException::class.java) {
             RootfsManifestVerifier.verify(
                 oversized, signed(oversized, pair), publicKey, "anlr-test-key", 4096, 16384
+            )
+        }
+    }
+
+    @Test fun rejectsStockDebianRuntimeAbi() {
+        val pair = keyPair()
+        val bytes = JSONObject(String(manifest(), Charsets.UTF_8))
+            .put("runtimeAbi", "debian-stock").toString().toByteArray()
+        val publicKey = Base64.getEncoder().encodeToString(pair.public.encoded)
+        assertThrows(IllegalArgumentException::class.java) {
+            RootfsManifestVerifier.verify(
+                bytes, signed(bytes, pair), publicKey, "anlr-test-key", 4096, 16384
             )
         }
     }
