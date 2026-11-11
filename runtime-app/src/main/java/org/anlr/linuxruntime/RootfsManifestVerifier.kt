@@ -15,6 +15,7 @@ internal data class VerifiedRootfsManifest(
     val archiveFormat: String,
     val downloadUrl: String,
     val archiveSizeBytes: Long,
+    val expandedSizeBytes: Long,
     val archiveSha256: String,
     val manifestSha256: String,
     val keyId: String
@@ -36,13 +37,14 @@ internal object RootfsManifestVerifier {
         signatureBase64: String,
         trustedPublicKeyBase64: String,
         expectedKeyId: String,
-        maxArchiveSizeBytes: Long
+        maxArchiveSizeBytes: Long,
+        maxExpandedSizeBytes: Long
     ): VerifiedRootfsManifest {
         require(manifestBytes.isNotEmpty() && manifestBytes.size <= MAX_MANIFEST_BYTES) {
             "Manifest size is invalid"
         }
         require(expectedKeyId.isNotBlank()) { "Trusted key ID is required" }
-        require(maxArchiveSizeBytes > 0) { "Archive size limit must be positive" }
+        require(maxArchiveSizeBytes > 0 && maxExpandedSizeBytes > 0) { "Rootfs size limits must be positive" }
 
         val signatureBytes = decodeBase64(signatureBase64, "signature")
         require(signatureBytes.size == 64) { "Ed25519 signature must be 64 bytes" }
@@ -77,6 +79,8 @@ internal object RootfsManifestVerifier {
 
         val size = json.getLong("archiveSizeBytes")
         require(size in 1..maxArchiveSizeBytes) { "Rootfs archive size exceeds configured limit" }
+        val expandedSize = json.getLong("expandedSizeBytes")
+        require(expandedSize in 1..maxExpandedSizeBytes) { "Expanded rootfs size exceeds configured limit" }
         val archiveSha256 = json.getString("archiveSha256")
         require(digestPattern.matches(archiveSha256)) { "Invalid archive SHA-256" }
 
@@ -88,6 +92,7 @@ internal object RootfsManifestVerifier {
             archiveFormat = archiveFormat,
             downloadUrl = parsedUrl.toASCIIString(),
             archiveSizeBytes = size,
+            expandedSizeBytes = expandedSize,
             archiveSha256 = archiveSha256.lowercase(),
             manifestSha256 = manifestDigest,
             keyId = keyId
