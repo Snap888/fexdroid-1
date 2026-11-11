@@ -12,6 +12,7 @@ import java.util.Base64
 internal data class VerifiedRootfsManifest(
     val releaseId: String,
     val architecture: String,
+    val runtimeAbi: String,
     val archiveFormat: String,
     val downloadUrl: String,
     val archiveSizeBytes: Long,
@@ -67,6 +68,8 @@ internal object RootfsManifestVerifier {
         require(releaseIdPattern.matches(releaseId)) { "Invalid release ID" }
         val architecture = json.getString("architecture")
         require(architecture == "aarch64") { "Only Debian ARM64 rootfs is supported" }
+        val runtimeAbi = json.getString("runtimeAbi")
+        require(runtimeAbi == "anlr-glibc-v1") { "Rootfs was not built for the ANLR Android ABI" }
         val archiveFormat = json.getString("archiveFormat")
         require(archiveFormat == "tar.gz") { "Unsupported rootfs archive format" }
 
@@ -89,6 +92,7 @@ internal object RootfsManifestVerifier {
         return VerifiedRootfsManifest(
             releaseId = releaseId,
             architecture = architecture,
+            runtimeAbi = runtimeAbi,
             archiveFormat = archiveFormat,
             downloadUrl = parsedUrl.toASCIIString(),
             archiveSizeBytes = size,
