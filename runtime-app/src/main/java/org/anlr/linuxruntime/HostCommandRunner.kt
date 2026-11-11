@@ -40,6 +40,10 @@ internal object HostCommandRunner {
             .start()
         val captured = ByteArrayOutputStream(minOf(maxOutputBytes, 4096))
         val truncated = AtomicBoolean(false)
+        fun stopProcessTree() {
+            runCatching { process.toHandle().descendants().forEach { it.destroyForcibly() } }
+            process.destroyForcibly()
+        }
         val reader = thread(name = "anlr-command-output", isDaemon = true) {
             process.inputStream.use { input ->
                 val buffer = ByteArray(2048)
@@ -51,7 +55,7 @@ internal object HostCommandRunner {
                         if (remaining > 0) captured.write(buffer, 0, minOf(remaining, count))
                         if (count > remaining) {
                             truncated.set(true)
-                            process.destroyForcibly()
+                            stopProcessTree()
                             break
                         }
                     }
@@ -66,7 +70,7 @@ internal object HostCommandRunner {
             Thread.currentThread().interrupt()
             throw interrupted
         }
-        if (!completed) process.destroyForcibly()
+        if (!completed) stopProcessTree()
         runCatching { reader.join(1_000) }
         if (reader.isAlive) {
             runCatching { process.inputStream.close() }
