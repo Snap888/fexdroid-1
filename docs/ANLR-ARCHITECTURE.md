@@ -50,3 +50,8 @@ The independent app exposes Home, Applications, Terminal and XFCE4 screens. The 
 ## Runtime storage implementation
 
 The app-private directory layout and atomic active-rootfs pointer are implemented in `RuntimeStorage`. Release activation requires a completion marker written only after archive extraction and verification. The installer/download/extractor must be implemented separately; no remote rootfs is trusted or installed by this layer.
+
+
+## Rootfs release storage
+
+`RuntimeStorageManager` owns the app-private runtime directory layout and staged-release lifecycle. It rejects unsafe release IDs, requires a completion marker and matching manifest SHA-256 before activation, publishes staged directories by rename, updates the active pointer atomically and rolls back the release directory if pointer publication fails. Startup removes incomplete staging directories. The checksum is a consistency check against a caller-supplied manifest value; authenticity still requires a trusted signed manifest and verified archive digest in the future installer.
