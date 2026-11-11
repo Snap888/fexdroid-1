@@ -78,4 +78,38 @@ class ElfCompatibilityCheckerTest {
         }
     }
 
+    @Test fun resolvesLib64InterpreterAndRejectsSymlinkEscape() {
+        val root = Files.createTempDirectory("anlr-compat-lib64-").toFile()
+        val outside = Files.createTempDirectory("anlr-compat-outside-").toFile()
+        try {
+            File(root, "lib64").mkdirs()
+            File(root, "lib64/ld-linux-x86-64.so.2").writeText("")
+            File(root, "lib64/libc.so.6").writeText("")
+            val backend = File(root, "usr/bin/fex").apply {
+                parentFile.mkdirs()
+                writeText("#!/bin/sh")
+                setExecutable(true)
+            }
+            val lib64Report = ElfCompatibilityChecker.check(
+                elf(machine = 62, interpreter = "/lib64/ld-linux-x86-64.so.2"),
+                root, ExecutionBackend.FEX_X86_64, backend
+            )
+            assertTrue(lib64Report.compatible)
+
+            File(root, "lib").delete()
+            Files.createSymbolicLink(File(root, "lib").toPath(), outside.toPath())
+            File(outside, "ld-linux-aarch64.so.1").writeText("")
+            File(outside, "libc.so.6").writeText("")
+            val escaped = ElfCompatibilityChecker.check(
+                elf(interpreter = "/lib/ld-linux-aarch64.so.1"),
+                root, ExecutionBackend.NATIVE_ARM64
+            )
+            assertFalse(escaped.compatible)
+            assertTrue(escaped.reasons.any { it.contains("escapes dependency rootfs") })
+        } finally {
+            root.deleteRecursively()
+            outside.deleteRecursively()
+        }
+    }
+
 }
