@@ -36,7 +36,7 @@ The `:runtime-app` module is independent. The first commit adds a launcher and t
 
 ## User interface milestone
 
-The independent app exposes Home, Applications, Terminal and XFCE4 screens. The application library stores SAF document URIs and metadata; execution is deliberately disabled until the runtime installer and process backend exist. The current terminal runs commands through Android's app-private `/system/bin/sh` with a bounded execution time and is not a Linux guest terminal/PTY. XFCE settings are persisted as a session profile; no XFCE process is launched yet.
+The independent app exposes Home, Applications, Terminal and XFCE4 screens. The application library copies SAF-selected files into private managed storage, records SHA-256 and inspects ELF class, endianness, e_machine and e_type; execution is deliberately disabled until the runtime installer and process backend exist. The current terminal runs commands through Android's app-private `/system/bin/sh` with a bounded execution time and is not a Linux guest terminal/PTY. XFCE settings are persisted as a session profile; no XFCE process is launched yet.
 
 ## Next implementation tasks
 
