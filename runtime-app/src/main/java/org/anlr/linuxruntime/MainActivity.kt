@@ -104,10 +104,19 @@ private fun AnlrApp() {
         apps = (0 until array.length()).mapNotNull { i ->
             runCatching {
                 val o = array.getJSONObject(i)
-                ImportedApp(o.getString("id"), o.getString("name"), o.optString("uri", ""), o.optString("type", "Linux file"), o.optString("localPath", ""), o.optString("sha256", ""), o.optLong("sizeBytes", 0L), o.optString("architecture", "Unknown"), o.optBoolean("executableCandidate", false),
-                    o.optString("interpreter", ""), (0 until o.optJSONArray("neededLibraries")?.length().orZero()).mapNotNull { n ->
-                        o.optJSONArray("neededLibraries")?.optString(n)?.takeIf { it.isNotBlank() }
-                    })
+                val needed = o.optJSONArray("neededLibraries")
+                val libraries = needed?.let { values ->
+                    (0 until values.length()).mapNotNull { n ->
+                        values.optString(n).takeIf { it.isNotBlank() }
+                    }
+                } ?: emptyList()
+                ImportedApp(
+                    o.getString("id"), o.getString("name"), o.optString("uri", ""),
+                    o.optString("type", "Linux file"), o.optString("localPath", ""),
+                    o.optString("sha256", ""), o.optLong("sizeBytes", 0L),
+                    o.optString("architecture", "Unknown"), o.optBoolean("executableCandidate", false),
+                    o.optString("interpreter", ""), libraries
+                )
             }.getOrNull()
         }
     }
