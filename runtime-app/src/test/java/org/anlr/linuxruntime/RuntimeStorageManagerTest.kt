@@ -18,12 +18,14 @@ class RuntimeStorageManagerTest {
         try {
             val manager = RuntimeStorageManager(root)
             val release = manager.createStagingRelease("debian-arm64-v1")
-            File(release, "etc").mkdirs()
+            File(release, "rootfs").mkdirs()
             val checksum = digest("manifest")
             manager.markComplete("debian-arm64-v1", checksum)
             manager.activate("debian-arm64-v1", checksum)
             assertEquals("debian-arm64-v1", manager.activeReleaseId())
             assertTrue(manager.releaseDirectory("debian-arm64-v1")!!.isDirectory)
+            assertTrue(manager.activeRootDirectory()!!.isDirectory)
+            assertTrue(Files.isSymbolicLink(File(root, "runtime/rootfs/current").toPath()))
         } finally {
             root.deleteRecursively()
         }
