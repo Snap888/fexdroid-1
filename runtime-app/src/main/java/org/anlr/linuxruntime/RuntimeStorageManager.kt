@@ -78,15 +78,17 @@ internal class RuntimeStorageManager(filesDir: File) {
         return release.takeIf { it.isDirectory && File(it, COMPLETE_MARKER).isFile }
     }
 
-    fun removeIncompleteStagingReleases(): Int {
+    /**
+     * Finds interrupted installs without deleting their data. The installer can
+     * validate its journal and resume or safely restart each returned release.
+     */
+    fun recoverStagingReleases(): List<String> {
         initialize()
-        var removed = 0
-        staging.listFiles()?.forEach { entry ->
-            if (entry.isDirectory && !File(entry, COMPLETE_MARKER).isFile) {
-                if (entry.deleteRecursively()) removed++
-            }
-        }
-        return removed
+        return staging.listFiles()
+            ?.filter { it.isDirectory && ID_PATTERN.matches(it.name) && !File(it, COMPLETE_MARKER).isFile }
+            ?.map { it.name }
+            ?.sorted()
+            ?: emptyList()
     }
 
     private fun child(parent: File, name: String): File {
