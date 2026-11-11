@@ -68,3 +68,12 @@ The original SAF URI is retained as provenance for older records, but the manage
 ## Runtime storage foundation
 
 RootfsManifestVerifier now verifies detached Ed25519 signatures over the exact manifest bytes, then validates schema, key ID, ARM64 architecture, archive format, HTTPS URL, size and archive digest. The trusted X.509 public key is injected; no production trust anchor or manifest endpoint has been provisioned, so the app must not silently install an arbitrary rootfs. RootfsArchiveDownloader supports HTTPS redirects, resumable `.part` downloads, size limits and SHA-256 verification. SafeRootfsExtractor handles tar.gz files with path traversal checks, bounded expansion, symlink normalization into the guest root, hardlink restrictions and rejection of special files. RootfsInstaller coordinates verification, download, extraction, shell-presence validation and atomic activation. A persistent staging journal records install phase; interrupted downloads are resumable, interrupted extraction is restarted from the verified archive, and incomplete staging is preserved at startup. These components are not yet exposed by an install UI and still require a maintainer-provided pinned public key and published signed Debian manifest.
+
+
+### ELF backend compatibility preflight
+
+`ElfCompatibilityChecker` compares ELF class, endianness and machine ID with the selected backend (native AArch64, FEX x86-64 or Box64 x86-64), checks the requested interpreter under the selected rootfs and resolves each `DT_NEEDED` name against the backend's known library directories. A missing backend or dependency is reported before launch. This is deliberately a conservative preflight, not a complete glibc symbol-version/relocation audit; it does not prove that an application will run.
+
+### Current execution boundary
+
+The terminal still executes a bounded Android host diagnostic shell. It is not a Debian shell and is not a PTY. There is no Linux guest launcher, FEX/Box64 payload, terminal resize/signal bridge, XFCE display server, input/audio/clipboard bridge, or enabled imported-app execution path. The rootfs installer core is not exposed as a user-facing install action until a maintainer supplies a pinned production Ed25519 public key and a signed manifest endpoint.
