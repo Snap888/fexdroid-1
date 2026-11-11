@@ -1,0 +1,7 @@
+cmake_minimum_required(VERSION 3.22.1)
+project(anlr_pty LANGUAGES CXX)
+add_library(anlr_pty SHARED pty_jni.cpp)
+target_compile_features(anlr_pty PRIVATE cxx_std_17)
+target_compile_options(anlr_pty PRIVATE -Wall -Wextra -Werror)
+find_library(log-lib log)
+target_link_libraries(anlr_pty ${log-lib})
