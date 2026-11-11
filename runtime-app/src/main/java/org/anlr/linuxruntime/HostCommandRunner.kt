@@ -4,7 +4,6 @@ import android.system.Os
 import android.system.OsConstants
 import java.io.ByteArrayOutputStream
 import java.io.File
-import java.io.File
 import java.nio.charset.Charset
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
