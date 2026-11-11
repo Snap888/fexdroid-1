@@ -69,9 +69,9 @@ internal object LinuxLaunchPlanner {
         require(cwd.isDirectory) { "Application working directory does not exist" }
         val environment = mapOf(
             "HOME" to canonicalRoot.absolutePath,
-            "PATH" to libraryDirs.map { File(canonicalRoot, "$it/bin") }
-                .plus(File(canonicalRoot, "usr/bin"))
-                .joinToString(":") { it.absolutePath },
+            "PATH" to listOf("bin", "usr/bin", "sbin", "usr/sbin")
+                .map { File(canonicalRoot, it) }
+                .filter { it.isDirectory }.joinToString(":") { it.absolutePath },
             "LD_LIBRARY_PATH" to libraryDirs.map { File(canonicalRoot, it) }
                 .filter { it.isDirectory }.joinToString(":") { it.absolutePath },
             "LANG" to "C.UTF-8",
