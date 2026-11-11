@@ -42,3 +42,6 @@ APK: `runtime-app/build/outputs/apk/debug/runtime-app-debug.apk`
 - Android seccomp and executable-memory policy differ by OS/OEM and need per-device probing.
 - KGSL node visibility does not guarantee Turnip initialization or Vulkan presentation.
 - A proot-based environment is useful for package management/debugging but should not be the default high-performance game execution path.
+
+
+CI note: changes to this module trigger the ANLR APK workflow, which publishes the debug APK as a GitHub Actions artifact.
