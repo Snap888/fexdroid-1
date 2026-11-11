@@ -98,14 +98,14 @@ internal object ElfInspector {
                 val neededOffsets = ArrayList<Long>()
                 var stringTableAddress: Long? = null
                 var stringTableSize: Long? = null
-                repeat(entryCount.toInt()) { index ->
+                for (index in 0 until entryCount.toInt()) {
                     val entry = ByteBuffer.wrap(
                         readAt(input, dynamic.offset + index.toLong() * entrySize, entrySize)
                     ).order(order)
                     val tag = if (is64) entry.getLong(0) else uint(entry.getInt(0))
                     val value = if (is64) entry.getLong(8) else uint(entry.getInt(4))
+                    if (tag == DT_NULL) break
                     when (tag) {
-                        DT_NULL -> return@repeat
                         DT_NEEDED -> neededOffsets += value
                         DT_STRTAB -> stringTableAddress = value
                         DT_STRSZ -> stringTableSize = value
