@@ -40,6 +40,16 @@ jobs:
           "$SDKM" --install "platforms;android-37" >/dev/null || true
       - name: Validate ANLR payload build script syntax
         run: find scripts -type f -name '*.sh' -print0 | xargs -0 -n1 bash -n
+      - name: Validate pinned release trust anchor
+        env:
+          RELEASE_PUBLIC_KEY_B64: ${{ secrets.ANLR_RELEASE_PUBLIC_KEY_B64 }}
+          RELEASE_KEY_ID: ${{ secrets.ANLR_RELEASE_KEY_ID }}
+        run: |
+          set -euo pipefail
+          test -n "$RELEASE_PUBLIC_KEY_B64"
+          test -n "$RELEASE_KEY_ID"
+          printf '%s' "$RELEASE_PUBLIC_KEY_B64" | base64 -d > "$RUNNER_TEMP/anlr-release-public.der"
+          openssl pkey -pubin -inform DER -in "$RUNNER_TEMP/anlr-release-public.der" -noout
       - name: Build independent runtime APK
         env:
           ORG_GRADLE_PROJECT_ANLR_RELEASE_PUBLIC_KEY_B64: ${{ secrets.ANLR_RELEASE_PUBLIC_KEY_B64 }}
