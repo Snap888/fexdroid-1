@@ -41,6 +41,9 @@ jobs:
       - name: Validate ANLR payload build script syntax
         run: find scripts -type f -name '*.sh' -print0 | xargs -0 -n1 bash -n
       - name: Build independent runtime APK
+        env:
+          ORG_GRADLE_PROJECT_ANLR_RELEASE_PUBLIC_KEY_B64: ${{ secrets.ANLR_RELEASE_PUBLIC_KEY_B64 }}
+          ORG_GRADLE_PROJECT_ANLR_RELEASE_KEY_ID: ${{ secrets.ANLR_RELEASE_KEY_ID }}
         run: ./gradlew --no-daemon --stacktrace :runtime-app:testDebugUnitTest :runtime-app:assembleDebug
       - uses: actions/upload-artifact@v4
         with:
