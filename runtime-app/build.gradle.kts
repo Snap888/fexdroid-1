@@ -12,8 +12,8 @@ android {
         versionCode = 1
         versionName = "0.1.0-dev"
         ndk { abiFilters += "arm64-v8a" }
-        buildConfigField("String", "ANLR_RELEASE_PUBLIC_KEY_B64", "\"${providers.gradleProperty(\"ANLR_RELEASE_PUBLIC_KEY_B64\").orNull ?: \"\"}\"")
-        buildConfigField("String", "ANLR_RELEASE_KEY_ID", "\"${providers.gradleProperty(\"ANLR_RELEASE_KEY_ID\").orNull ?: \"\"}\"")
+        buildConfigField("String", "ANLR_RELEASE_PUBLIC_KEY_B64", "\"${providers.gradleProperty("ANLR_RELEASE_PUBLIC_KEY_B64").orNull ?: ""}\"")
+        buildConfigField("String", "ANLR_RELEASE_KEY_ID", "\"${providers.gradleProperty("ANLR_RELEASE_KEY_ID").orNull ?: ""}\"")
     }
     buildFeatures {
         compose = true
