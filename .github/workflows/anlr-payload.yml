@@ -66,7 +66,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: build/rootfs
-          key: anlr-rootfs-v1-${{ hashFiles('scripts/build-rootfs.sh', 'scripts/build-x86-sysroot.sh', 'scripts/config.sh') }}
+          key: anlr-rootfs-v1-${{ hashFiles('scripts/build-rootfs.sh', 'scripts/build-x86-sysroot.sh', 'scripts/build-ubuntu-rootfs.sh', 'scripts/config.sh') }}
 
       - name: Cache patched glibc
         id: glibc
@@ -77,7 +77,7 @@ jobs:
 
       - name: Build ARM64 and x86-64 rootfs/sysroots
         if: steps.rootfs.outputs.cache-hit != 'true'
-        run: scripts/build-rootfs.sh && scripts/build-x86-sysroot.sh
+        run: scripts/build-rootfs.sh && scripts/build-x86-sysroot.sh && scripts/build-ubuntu-rootfs.sh
 
       - name: Build ANLR patched glibc
         if: steps.glibc.outputs.cache-hit != 'true'
