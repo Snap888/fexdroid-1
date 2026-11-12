@@ -51,7 +51,7 @@ class LinuxLaunchPlannerTest {
     @Test fun keepsFexHostRuntimeSeparateFromX64GuestRootfs() {
         val temp = Files.createTempDirectory("anlr-plan-fex-").toFile()
         val host = File(temp, "host").apply { mkdirs() }
-        val guest = File(temp, "guest").apply { mkdirs() }
+        val guest = File(host, "usr/share/anlr/x86_64").apply { mkdirs() }
         val app = File(temp, "imports/x64-app").apply { parentFile.mkdirs(); writeBytes(staticElf(62)) }
         val fex = File(host, "usr/bin/FEX").apply { parentFile.mkdirs(); writeBytes(staticElf(183)); setExecutable(true) }
         try {
@@ -62,6 +62,7 @@ class LinuxLaunchPlannerTest {
             assertEquals(fex.canonicalFile, plan.executable.canonicalFile)
             assertEquals(app.canonicalPath, plan.arguments.first())
             assertEquals(host.canonicalPath, plan.environment["ANLR_ROOTFS"])
+            assertEquals(guest.canonicalPath, plan.environment["FEX_ROOTFS"])
         } finally {
             temp.deleteRecursively()
         }
