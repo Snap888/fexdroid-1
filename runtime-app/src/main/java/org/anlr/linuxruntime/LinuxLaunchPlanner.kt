@@ -81,7 +81,19 @@ internal object LinuxLaunchPlanner {
                 check(backendReport.compatible) {
                     "Translation backend is incompatible with ARM64 host rootfs: " + backendReport.reasons.joinToString("; ")
                 }
-                commandArguments = listOf(binary.absolutePath) + arguments
+                commandArguments = when (backend) {
+                    ExecutionBackend.FEX_X86_64 -> {
+                        val relative = binary.toPath().normalize().let { path ->
+                            require(path.startsWith(canonicalDependencyRoot.toPath())) {
+                                "FEX executable must be staged inside its x86-64 guest rootfs"
+                            }
+                            canonicalDependencyRoot.toPath().relativize(path).toString()
+                        }
+                        listOf("/" + relative.replace(File.separatorChar, '/')) + arguments
+                    }
+                    ExecutionBackend.BOX64_X86_64 -> listOf(binary.absolutePath) + arguments
+                    else -> error("Unsupported translation backend")
+                }
             }
         }
         val cwd = workingDirectory.canonicalFile
@@ -105,9 +117,19 @@ internal object LinuxLaunchPlanner {
             }
             environment["FEX_ROOTFS"] = guestRoot.absolutePath
             val fexHome = File(canonicalRoot, "home/anlr/.fex-emu")
+            fexHome.mkdirs()
+            File(canonicalRoot, "home/anlr/.cache/fex-emu").mkdirs()
             environment["FEX_APP_CONFIG_LOCATION"] = fexHome.absolutePath + "/"
             environment["FEX_APP_DATA_LOCATION"] = fexHome.absolutePath + "/"
             environment["FEX_APP_CACHE_LOCATION"] = File(canonicalRoot, "home/anlr/.cache/fex-emu").absolutePath + "/"
+        }
+        if (backend == ExecutionBackend.BOX64_X86_64) {
+            environment["BOX64_LD_LIBRARY_PATH"] = x64LibraryDirs
+                .map { File(canonicalDependencyRoot, it) }
+                .filter { it.isDirectory }
+                .joinToString(":") { it.absolutePath }
+            environment["BOX64_DYNAREC"] = "1"
+            environment["BOX64_NOBANNER"] = "1"
         }
         if (backend == ExecutionBackend.NATIVE_ARM64) {
             val pathShim = File(canonicalRoot, "usr/lib/fexdroid/libfxpath.so")
