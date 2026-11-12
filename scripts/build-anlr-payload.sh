@@ -84,11 +84,15 @@ for base, dirs, files in os.walk(root, followlinks=False):
 h = hashlib.sha256()
 with archive.open('rb') as f:
     for block in iter(lambda: f.read(1024 * 1024), b''): h.update(block)
+box64_version = pathlib.Path("build/box64/version.txt").read_text().strip()
 print(json.dumps({"architecture":"aarch64", "archiveFormat":"tar.gz",
+                  "distribution":"Ubuntu", "distributionVersion":"24.04",
                   "archiveSizeBytes":archive.stat().st_size,
                   "expandedSizeBytes":expanded, "archiveSha256":h.hexdigest(),
                   "runtimeAbi":"anlr-glibc-v1",
-                  "runtimeRoot":(root / 'usr/lib/anlr/runtime-root').read_text().strip()},
+                  "runtimeRoot":(root / 'usr/lib/anlr/runtime-root').read_text().strip(),
+                  "backends":{"fex":os.environ.get("FEX_TAG", "FEX-2609"),
+                              "box64":box64_version}},
                  indent=2) + "\n")
 PY
 
