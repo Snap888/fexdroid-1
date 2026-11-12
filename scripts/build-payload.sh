@@ -8,14 +8,15 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 source scripts/config.sh
 NDK="${ANDROID_NDK:-$HOME/Android/Sdk/ndk/29.0.14206865}"
-OUT=build/payload
-STAGE=build/payload-stage
+OUT="${ANLR_PAYLOAD_OUT:-build/payload}"
+STAGE="${ANLR_STAGE_DIR:-build/payload-stage}"
+ARM64_ARCHIVE="${ANLR_ARM64_ROOTFS_ARCHIVE:-build/rootfs/rootfs-arm64.tar}"
 rm -rf "$OUT" "$STAGE"
 KEEP_STAGE="${KEEP_STAGE:-1}"   # stage is reused by scripts/test-payload-qemu.sh
 mkdir -p "$OUT/assets" "$OUT/jniLibs/arm64-v8a" "$STAGE/arm64" "$STAGE/x86_64"
 
 need() { [[ -e "$1" ]] || { echo "missing $1 ($2)"; exit 1; }; }
-need build/rootfs/rootfs-arm64.tar "scripts/build-rootfs.sh"
+need "$ARM64_ARCHIVE" "ARM64 rootfs builder"
 need build/rootfs/rootfs-x86_64.tar "scripts/build-rootfs.sh"
 need "build/glibc/install$FXD_LDSO" "scripts/build-glibc.sh"
 need "build/fex/install$FXD_ROOT/usr/bin/FEX" "scripts/build-fex.sh"
@@ -29,7 +30,7 @@ fi
 
 # ---- arm64 rootfs ------------------------------------------------------------------
 A="$STAGE/arm64"
-tar -C "$A" -xf build/rootfs/rootfs-arm64.tar
+tar -C "$A" -xf "$ARM64_ARCHIVE"
 # Patched glibc runtime (same ABI as Debian's libc6, see scripts/build-glibc.sh).
 G="build/glibc/install$FXD_LIBDIR"
 for f in "$G"/*.so* ; do
@@ -47,7 +48,7 @@ if [[ "${WITH_MESA:-1}" == 1 ]]; then
   cp -a "build/mesa/install$FXD_ROOT/." "$A/"
 fi
 # Drop debug info from what we compiled ourselves (glibc, FEX); keeps dynamic symbols.
-find "$A/usr/lib/$FXD_MULTIARCH" -maxdepth 1 -newer build/rootfs/rootfs-arm64.tar -type f -name '*.so*' \
+find "$A/usr/lib/$FXD_MULTIARCH" -maxdepth 1 -newer "$ARM64_ARCHIVE" -type f -name '*.so*' \
   -exec llvm-strip --strip-debug {} +
 find "$A/usr/bin" -maxdepth 1 -type f -name 'FEX*' -exec llvm-strip --strip-debug {} +
 find "$A/usr/lib" -maxdepth 1 -type f -name 'libFEXCore.so' -exec llvm-strip --strip-debug {} +
