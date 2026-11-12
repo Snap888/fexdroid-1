@@ -106,6 +106,9 @@ internal class RuntimeStorageManager(filesDir: File) {
         val released = child(releases, releaseId)
         val stagedMarker = File(staged, COMPLETE_MARKER)
         val releasedMarker = File(released, COMPLETE_MARKER)
+        // Fail before publishing or switching the authoritative pointer if a legacy
+        // filesDir/rootfs path cannot safely become our stable symlink.
+        prepareActiveRootLink()
         val alreadyPublished = released.isDirectory && releasedMarker.isFile && !staged.exists()
         val marker = if (alreadyPublished) releasedMarker else stagedMarker
         check(marker.isFile) { "Release is incomplete" }
@@ -146,8 +149,23 @@ internal class RuntimeStorageManager(filesDir: File) {
         return resolved.takeIf { it == expected.canonicalFile && it.isDirectory }
     }
 
+    private fun prepareActiveRootLink() {
+        val path = activeRootLink.toPath()
+        if (!Files.exists(path, java.nio.file.LinkOption.NOFOLLOW_LINKS)) return
+        if (Files.isSymbolicLink(path)) return
+        check(Files.isDirectory(path, java.nio.file.LinkOption.NOFOLLOW_LINKS)) {
+            "Cannot activate rootfs: filesDir/rootfs exists and is not a directory or symlink"
+        }
+        val hasEntries = Files.newDirectoryStream(path).use { it.iterator().hasNext() }
+        check(!hasEntries) {
+            "Cannot replace non-empty legacy filesDir/rootfs; preserve it and migrate it explicitly"
+        }
+        Files.delete(path)
+    }
+
     private fun updateActiveRootLink(releaseId: String) {
         validateId(releaseId)
+        prepareActiveRootLink()
         val temp = File(activeRootLink.parentFile, ".current-${UUID.randomUUID()}").toPath()
         try {
             Files.createSymbolicLink(temp, Paths.get("runtime/rootfs/releases/$releaseId/rootfs"))
