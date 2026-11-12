@@ -45,7 +45,7 @@ jobs:
         run: |
           sudo apt-get update -qq
           docker info >/dev/null
-          sudo apt-get install -y ninja-build patchelf zstd bison flex file gcc-aarch64-linux-gnu g++-aarch64-linux-gnu binutils-aarch64-linux-gnu glslang-tools ccache
+          sudo apt-get install -y ninja-build patchelf zstd bison flex file libarchive-tools gcc-aarch64-linux-gnu g++-aarch64-linux-gnu binutils-aarch64-linux-gnu glslang-tools ccache
           sudo pip3 install --break-system-packages -q 'meson>=1.4' mako pyyaml packaging
           wget -q https://apt.llvm.org/llvm.sh
           chmod +x llvm.sh
@@ -57,7 +57,9 @@ jobs:
           ninja --version
 
       - name: Validate build scripts
-        run: find scripts -type f -name '*.sh' -print0 | xargs -0 -n1 bash -n
+        run: |
+          find scripts -type f -name '*.sh' -print0 | xargs -0 -n1 bash -n
+          chmod +x scripts/*.sh scripts/lib/*.sh
 
       - uses: actions/cache@v4
         with:
@@ -85,17 +87,17 @@ jobs:
 
       - name: Build ANLR patched glibc
         if: steps.glibc.outputs.cache-hit != 'true'
-        run: scripts/build-glibc.sh 2>&1 | tail -50
+        run: bash scripts/build-glibc.sh 2>&1 | tail -50
 
       - name: Build FEX and thunks
-        run: scripts/build-fex.sh 2>&1 | tail -60
+        run: bash scripts/build-fex.sh 2>&1 | tail -60
 
       - name: Build Box64 ARM64 dynarec backend
-        run: scripts/build-box64.sh 2>&1 | tail -60
+        run: bash scripts/build-box64.sh 2>&1 | tail -60
 
       - name: Assemble and QEMU smoke-test runtime
         run: |
-          ANLR_PREBUILT_STAGES=1 BUILD_MESA=0 scripts/build-anlr-payload.sh
+          ANLR_PREBUILT_STAGES=1 BUILD_MESA=0 bash scripts/build-anlr-payload.sh
 
       - uses: actions/upload-artifact@v4
         with:
