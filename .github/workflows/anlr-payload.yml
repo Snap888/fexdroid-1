@@ -91,7 +91,7 @@ jobs:
 
       - name: Assemble and QEMU smoke-test runtime
         run: |
-          BUILD_MESA=0 scripts/build-anlr-payload.sh
+          ANLR_PREBUILT_STAGES=1 BUILD_MESA=0 scripts/build-anlr-payload.sh
           scripts/test-payload-qemu.sh 'echo ANLR_QEMU_BEGIN; /usr/bin/id; /usr/bin/FEX --version; /usr/bin/box64 --version; echo ANLR_QEMU_END'
 
       - uses: actions/upload-artifact@v4
