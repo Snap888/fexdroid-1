@@ -429,13 +429,20 @@ private fun RuntimeManagerScreen(context: Context, onNotice: (String) -> Unit) {
                     root != null -> "Linux ARM64"
                     else -> "Не установлена"
                 }
-                Triple(id, distro, storage)
+                val componentReport = root?.let { RuntimeComponentVerifier.inspect(it) }
+                val runtimeStatus = when {
+                    id == null -> "Linux-система не установлена"
+                    componentReport == null -> "Release найден, но rootfs недоступен"
+                    componentReport.complete -> "Активна: $distro · $id · FEX + Box64 + XFCE4"
+                    else -> "Rootfs установлен, но runtime неполный: ${componentReport.missing.joinToString()}"
+                }
+                Triple(id, distro, runtimeStatus)
             }
         }
         result.onSuccess {
             activeId = it.first
             activeDistro = it.second
-            status = if (it.first == null) "Linux-система не установлена" else "Активна: ${it.second} · ${it.first}"
+            status = it.third
         }.onFailure { status = "Ошибка проверки: ${it.message}" }
     }
 
