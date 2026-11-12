@@ -79,6 +79,30 @@ EOF
   rm -rf "$a/usr/share/anlr/x86_64"
   cp -a "$x" "$a/usr/share/anlr/x86_64"
 
+  # Fail the release build if the archive would install without either
+  # translation backend or a usable XFCE/X11 userspace.
+  for required in \
+    usr/bin/FEX usr/bin/box64 \
+    usr/bin/startxfce4 usr/bin/xfce4-session usr/bin/xfce4-panel \
+    usr/bin/xfdesktop usr/bin/xfwm4 usr/bin/thunar \
+    usr/bin/Xvfb usr/bin/xauth usr/bin/xdpyinfo; do
+    [[ -x "$a/$required" ]] || { echo "missing runtime component: $a/$required" >&2; exit 1; }
+  done
+  [[ -x "$a/usr/share/anlr/x86_64/bin/sh" || -x "$a/usr/share/anlr/x86_64/usr/bin/sh" ]] || {
+    echo "missing x86-64 guest shell" >&2; exit 1;
+  }
+  for loader in \
+    lib64/ld-linux-x86-64.so.2 lib/ld-linux-x86-64.so.2 \
+    lib/x86_64-linux-gnu/ld-linux-x86-64.so.2 \
+    usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2; do
+    if [[ -e "$a/usr/share/anlr/x86_64/$loader" ]]; then
+      break
+    fi
+  done
+  [[ -n "${loader:-}" && -e "$a/usr/share/anlr/x86_64/$loader" ]] || {
+    echo "missing x86-64 dynamic loader" >&2; exit 1;
+  }
+
   python3 - "$a/usr/share/fex-emu/Config.json" "$FEXROOT_PATH/usr/share/anlr/x86_64" <<'PY'
 import json, pathlib, sys
 p = pathlib.Path(sys.argv[1])
@@ -118,6 +142,16 @@ PY
      "$FXD_ROOT/bin/sh" -c "echo ANLR_GUEST_EXEC_OK"
      test -x "$FXD_ROOT/usr/bin/FEX"
      test -x "$FXD_ROOT/usr/bin/box64"
+     test -x "$FXD_ROOT/usr/bin/startxfce4"
+     test -x "$FXD_ROOT/usr/bin/xfce4-session"
+     test -x "$FXD_ROOT/usr/bin/xfce4-panel"
+     test -x "$FXD_ROOT/usr/bin/xfdesktop"
+     test -x "$FXD_ROOT/usr/bin/xfwm4"
+     test -x "$FXD_ROOT/usr/bin/thunar"
+     test -x "$FXD_ROOT/usr/bin/Xvfb"
+     test -x "$FXD_ROOT/usr/bin/xauth"
+     test -x "$FXD_ROOT/usr/bin/xdpyinfo"
+     test -x "$FEX_ROOTFS/bin/sh"
      test -x "$FEX_ROOTFS$smoke"
      echo ANLR_FEX_SMOKE_BEGIN
      "$FXD_ROOT/usr/bin/FEX" "$smoke"
