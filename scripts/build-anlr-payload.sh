@@ -72,7 +72,7 @@ import json, pathlib, sys
 p = pathlib.Path(sys.argv[1])
 cfg = json.loads(p.read_text())
 cfg.setdefault("Config", {})["RootFS"] = str(pathlib.Path(sys.argv[2]).resolve())
-p.write_text(json.dumps(cfg, indent=2) + "\\n")
+p.write_text(json.dumps(cfg, indent=2) + "\n")
 PY
 
   tar -C "$a" --numeric-owner --owner=0 --group=0 --sort=name --mtime='@0' \
@@ -92,7 +92,7 @@ print(json.dumps({
   "runtimeRoot": (root / "usr/lib/anlr/runtime-root").read_text().strip(),
   "backends": {"fex": os.environ.get("FEX_TAG", "FEX-2609"),
                "box64": pathlib.Path("build/box64/version.txt").read_text().strip()}
-}, indent=2) + "\\n")
+}, indent=2) + "\n")
 PY
 
   ANLR_STAGE_DIR="$stage" scripts/test-payload-qemu.sh \
