@@ -110,7 +110,7 @@ PY
   # Run both translators against the same known-good dynamically linked x86-64 ELF.
   # Do not use FEX --version: this FEX build does not implement that CLI option.
   ANLR_STAGE_DIR="$stage" scripts/test-payload-qemu.sh \
-    'set -euo pipefail; echo ANLR_ROOTFS_SMOKE_BEGIN; /usr/bin/id; /bin/sh -c "echo ANLR_GUEST_EXEC_OK"; test -x /usr/bin/FEX; test -x /usr/bin/box64; /usr/bin/FEX /usr/share/anlr/smoke/anlr-x86_64-smoke; BOX64_DYNAREC=0 /usr/bin/box64 /usr/share/anlr/smoke/anlr-x86_64-smoke; echo ANLR_ROOTFS_SMOKE_END'
+    'set -euo pipefail; echo ANLR_ROOTFS_SMOKE_BEGIN; "$FXD_ROOT/usr/bin/id"; "$FXD_ROOT/bin/sh" -c "echo ANLR_GUEST_EXEC_OK"; test -x "$FXD_ROOT/usr/bin/FEX"; test -x "$FXD_ROOT/usr/bin/box64"; test -x "$FXD_ROOT/usr/share/anlr/smoke/anlr-x86_64-smoke"; "$FXD_ROOT/usr/bin/FEX" "$FXD_ROOT/usr/share/anlr/smoke/anlr-x86_64-smoke"; BOX64_DYNAREC=0 "$FXD_ROOT/usr/bin/box64" "$FXD_ROOT/usr/share/anlr/smoke/anlr-x86_64-smoke"; echo ANLR_ROOTFS_SMOKE_END'
   echo "Built $distro $version: $archive"
 }
 
