@@ -126,7 +126,7 @@ internal object RootfsArchiveDownloader {
         }
     }
 
-    private fun finalizeDownload(
+    internal fun finalizeDownload(
         partial: File,
         completed: File,
         manifest: VerifiedRootfsManifest
