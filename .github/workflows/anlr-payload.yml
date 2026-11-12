@@ -109,13 +109,13 @@ jobs:
       - name: Sign Debian and Ubuntu manifests
         id: sign
         env:
-          RELEASE_PRIVATE_KEY_B64: \${{ secrets.ANLR_RELEASE_PRIVATE_KEY_B64 }}
-          RELEASE_PUBLIC_KEY_B64: \${{ secrets.ANLR_RELEASE_PUBLIC_KEY_B64 }}
-          RELEASE_KEY_ID: \${{ secrets.ANLR_RELEASE_KEY_ID }}
-          RELEASE_TAG: anlr-runtime-\${{ github.sha }}
+          RELEASE_PRIVATE_KEY_B64: ${{ secrets.ANLR_RELEASE_PRIVATE_KEY_B64 }}
+          RELEASE_PUBLIC_KEY_B64: ${{ secrets.ANLR_RELEASE_PUBLIC_KEY_B64 }}
+          RELEASE_KEY_ID: ${{ secrets.ANLR_RELEASE_KEY_ID }}
+          RELEASE_TAG: anlr-runtime-${{ github.sha }}
         run: |
           set -euo pipefail
-          if [[ -z "\${RELEASE_PRIVATE_KEY_B64:-}" || -z "\${RELEASE_PUBLIC_KEY_B64:-}" || -z "\${RELEASE_KEY_ID:-}" ]]; then
+          if [[ -z "${RELEASE_PRIVATE_KEY_B64:-}" || -z "${RELEASE_PUBLIC_KEY_B64:-}" || -z "${RELEASE_KEY_ID:-}" ]]; then
             echo "signed=false" >> "$GITHUB_OUTPUT"
             echo "Release secrets incomplete; keeping build as CI-only artifact."
             exit 0
@@ -163,8 +163,8 @@ jobs:
         if: steps.sign.outputs.signed == 'true'
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: anlr-runtime-\${{ github.sha }}
-          name: ANLR Linux Runtime \${{ github.sha }}
+          tag_name: anlr-runtime-${{ github.sha }}
+          name: ANLR Linux Runtime ${{ github.sha }}
           make_latest: true
           files: |
             build/anlr-release/debian-arm64-rootfs.tar.gz
