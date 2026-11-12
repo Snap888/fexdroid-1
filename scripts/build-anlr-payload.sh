@@ -108,7 +108,7 @@ print(json.dumps({
 PY
 
   ANLR_STAGE_DIR="$stage" scripts/test-payload-qemu.sh \
-    'set -e; echo ANLR_ROOTFS_SMOKE_BEGIN; /usr/bin/id; /bin/sh -c "echo ANLR_GUEST_EXEC_OK"; /usr/bin/FEX --version; /usr/bin/FEX /usr/share/anlr/smoke/anlr-x86_64-smoke; BOX64_DYNAREC=0 /usr/bin/box64 /usr/share/anlr/smoke/anlr-x86_64-smoke; echo ANLR_ROOTFS_SMOKE_END'
+    'set -e; echo ANLR_ROOTFS_SMOKE_BEGIN; /usr/bin/id; /bin/sh -c "echo ANLR_GUEST_EXEC_OK"; /usr/bin/FEX /usr/share/anlr/smoke/anlr-x86_64-smoke; BOX64_DYNAREC=0 /usr/bin/box64 /usr/share/anlr/smoke/anlr-x86_64-smoke; echo ANLR_ROOTFS_SMOKE_END'
   echo "Built $distro $version: $archive"
 }
 
