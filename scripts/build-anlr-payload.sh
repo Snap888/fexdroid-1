@@ -62,6 +62,18 @@ build_variant() {
 
   local a="$stage/arm64" x="$stage/x86_64"
   install -D -m 0755 build/box64/install/usr/bin/box64 "$a/usr/bin/box64"
+  # Compile a tiny x86-64 guest executable on the x86-64 CI host. This verifies
+  # Box64 actually launches an ELF, rather than merely printing its own version.
+  mkdir -p "$x/usr/share/anlr/smoke"
+  cat > build/anlr-x86_64-smoke.c <<'EOF'
+#include <stdio.h>
+int main(void) {
+    puts("ANLR_X86_64_ELF_EXEC_OK");
+    return 0;
+}
+EOF
+  gcc -m64 -O2 -o "$x/usr/share/anlr/smoke/anlr-x86_64-smoke" build/anlr-x86_64-smoke.c
+  file "$x/usr/share/anlr/smoke/anlr-x86_64-smoke" | grep -q 'ELF 64-bit.*x86-64'
   install -D -m 0644 build/box64/version.txt "$a/usr/share/anlr/box64-version"
   mkdir -p "$a/usr/share/anlr"
   rm -rf "$a/usr/share/anlr/x86_64"
@@ -96,7 +108,7 @@ print(json.dumps({
 PY
 
   ANLR_STAGE_DIR="$stage" scripts/test-payload-qemu.sh \
-    'echo ANLR_ROOTFS_SMOKE_BEGIN; /usr/bin/id; /bin/sh -c "echo ANLR_GUEST_EXEC_OK"; /usr/bin/FEX --version; /usr/bin/box64 --version; echo ANLR_ROOTFS_SMOKE_END'
+    'set -e; echo ANLR_ROOTFS_SMOKE_BEGIN; /usr/bin/id; /bin/sh -c "echo ANLR_GUEST_EXEC_OK"; /usr/bin/FEX --version; BOX64_DYNAREC=0 /usr/bin/box64 /usr/share/anlr/smoke/anlr-x86_64-smoke; echo ANLR_ROOTFS_SMOKE_END'
   echo "Built $distro $version: $archive"
 }
 
