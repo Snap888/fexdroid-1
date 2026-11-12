@@ -41,8 +41,8 @@ class RuntimeComponentVerifierTest {
                 "usr/share/anlr/x86_64/bin/sh",
                 "usr/share/anlr/x86_64/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2",
                 "usr/bin/startxfce4", "usr/bin/xfce4-session",
-                "usr/bin/xfce4-panel", "usr/bin/xfwm4",
-                "usr/bin/Xvfb", "usr/bin/xauth"
+                "usr/bin/xfce4-panel", "usr/bin/xfdesktop", "usr/bin/xfwm4", "usr/bin/thunar",
+                "usr/bin/Xvfb", "usr/bin/xauth", "usr/bin/xdpyinfo"
             ).forEach { executable(root, it) }
             val report = RuntimeComponentVerifier.inspect(root)
             assertTrue(report.launchBackendsReady)
