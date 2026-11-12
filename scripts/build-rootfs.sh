@@ -25,6 +25,7 @@ RUNTIME_PKGS=(
   libxcb-sync1 libxcb-xfixes0 libxcb-randr0 libxshmfence1 libwayland-client0
   libvulkan1 vulkan-tools                            # phase 3: vulkaninfo, vkcube
   xvfb                                               # phase 3: X server (PLAN.md D3)
+  xfce4-session xfce4-panel xfdesktop4 xfwm4 thunar xfce4-terminal dbus-x11 xauth x11-xserver-utils xfonts-base
   x11-utils                                          # phase 4: xev/xdpyinfo to verify input
   pulseaudio pulseaudio-utils                        # phase 4: audio server (pipe sink -> AAudio)
   mesa-vulkan-drivers                                # lavapipe: CPU Vulkan for GPUs without Turnip (Mali, ...)
