@@ -86,6 +86,7 @@ PY
 
 # QEMU smoke test the ARM64 shell and verify the FEX executable is present.
 scripts/test-payload-qemu.sh 'echo ANLR_ROOTFS_SMOKE_BEGIN; /usr/bin/id; /bin/sh -c "echo ANLR_GUEST_EXEC_OK"; test -x /usr/bin/FEX; echo ANLR_ROOTFS_SMOKE_END'
+scripts/test-payload-qemu.sh '/usr/bin/box64 --version'
 
 echo
 echo "ANLR rootfs archive built: $ARCHIVE"
