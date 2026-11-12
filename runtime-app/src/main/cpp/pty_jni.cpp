@@ -133,6 +133,10 @@ Java_org_anlr_linuxruntime_NativePty_nativeRead(
     std::vector<jbyte> buffer(static_cast<size_t>(length));
     ssize_t count;
     do { count = read(fd, buffer.data(), buffer.size()); } while (count < 0 && errno == EINTR);
+    // Linux PTY masters report EIO after the slave side closes. This is the
+    // normal end-of-stream condition when the guest shell exits, not a transport
+    // failure that should surface as an exception in the terminal read loop.
+    if (count < 0 && errno == EIO) return 0;
     if (count < 0) return -errno;
     if (count > 0) env->SetByteArrayRegion(output, 0, static_cast<jsize>(count), buffer.data());
     return static_cast<jint>(count);
