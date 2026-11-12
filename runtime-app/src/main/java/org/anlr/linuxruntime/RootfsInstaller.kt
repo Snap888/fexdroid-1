@@ -44,11 +44,7 @@ internal object RootfsInstaller {
         val published = storage.releaseDirectory(manifest.releaseId)
         if (published != null) {
             val publishedRoot = File(published, "rootfs")
-            check(publishedRoot.isDirectory &&
-                (File(publishedRoot, "bin/sh").exists() || File(publishedRoot, "usr/bin/sh").exists()) &&
-                File(publishedRoot, "usr/lib/anlr/runtime-abi").let { it.isFile && it.readText().trim() == manifest.runtimeAbi }) {
-                "Published rootfs is missing its Linux shell"
-            }
+            validateRootfsIdentity(publishedRoot, manifest.runtimeAbi, filesDir)
             storage.activate(manifest.releaseId, manifest.manifestSha256)
             return RootfsInstallResult(
                 manifest.releaseId, storage.activeRootDirectory() ?: publishedRoot, 0, 0, manifest.manifestSha256
@@ -61,11 +57,7 @@ internal object RootfsInstaller {
         // Re-validate the staged shell and finish activation instead of downloading again.
         if (storage.isStagingReleaseComplete(manifest.releaseId, manifest.manifestSha256)) {
             val stagedRoot = File(staging, "rootfs")
-            check(stagedRoot.isDirectory &&
-                (File(stagedRoot, "bin/sh").exists() || File(stagedRoot, "usr/bin/sh").exists()) &&
-                File(stagedRoot, "usr/lib/anlr/runtime-abi").let { it.isFile && it.readText().trim() == manifest.runtimeAbi }) {
-                "Completed staging release is missing its Linux shell"
-            }
+            validateRootfsIdentity(stagedRoot, manifest.runtimeAbi, filesDir)
             storage.activate(manifest.releaseId, manifest.manifestSha256)
             return RootfsInstallResult(
                 manifest.releaseId, storage.activeRootDirectory() ?: File(storage.releaseDirectory(manifest.releaseId)!!, "rootfs"),
@@ -93,13 +85,7 @@ internal object RootfsInstaller {
         val extraction = SafeRootfsExtractor.extractTarGz(
             archive, extractedRoot, manifest.expandedSizeBytes
         )
-        check(File(extractedRoot, "bin/sh").exists() || File(extractedRoot, "usr/bin/sh").exists()) {
-            "Downloaded archive is not a usable Debian ARM64 rootfs: /bin/sh is missing"
-        }
-        val runtimeAbi = File(extractedRoot, "usr/lib/anlr/runtime-abi")
-        check(runtimeAbi.isFile && runtimeAbi.readText().trim() == manifest.runtimeAbi) {
-            "Rootfs does not contain the required ANLR-patched glibc runtime ABI"
-        }
+        validateRootfsIdentity(extractedRoot, manifest.runtimeAbi, filesDir)
         storage.updateStagingJournal(manifest.releaseId, manifest.manifestSha256, RootfsInstallPhase.EXTRACTED)
         storage.markComplete(manifest.releaseId, manifest.manifestSha256)
         storage.activate(manifest.releaseId, manifest.manifestSha256)
@@ -108,6 +94,26 @@ internal object RootfsInstaller {
             manifest.releaseId, storage.activeRootDirectory() ?: File(storage.releaseDirectory(manifest.releaseId)!!, "rootfs"),
             extraction.entriesExtracted, extraction.bytesExtracted, manifest.manifestSha256
         )
+    }
+
+    /** Validate the payload's compile-time paths as well as its ABI marker. */
+    internal fun validateRootfsIdentity(rootfs: File, expectedRuntimeAbi: String, filesDir: File) {
+        check(rootfs.isDirectory &&
+            (File(rootfs, "bin/sh").exists() || File(rootfs, "usr/bin/sh").exists())) {
+            "Rootfs is missing its Linux shell"
+        }
+        val runtimeAbi = File(rootfs, "usr/lib/anlr/runtime-abi")
+        check(runtimeAbi.isFile && runtimeAbi.readText().trim() == expectedRuntimeAbi) {
+            "Rootfs does not contain the required ANLR-patched glibc runtime ABI"
+        }
+        val runtimeRoot = File(rootfs, "usr/lib/anlr/runtime-root")
+        check(runtimeRoot.isFile) { "Rootfs is missing its compiled runtime-root identity" }
+        val compiledRoot = File(runtimeRoot.readText().trim()).canonicalFile
+        // Resolve filesDir, but do not follow an existing filesDir/rootfs release symlink.
+        val expectedRoot = File(filesDir.canonicalFile, "rootfs").canonicalFile
+        check(compiledRoot == expectedRoot) {
+            "Rootfs was built for a different Android package path: $compiledRoot (expected $expectedRoot)"
+        }
     }
 
     private fun deleteTreeNoFollow(root: Path) {
