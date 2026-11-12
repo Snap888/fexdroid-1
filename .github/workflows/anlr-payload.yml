@@ -22,6 +22,7 @@ concurrency:
 jobs:
   build-runtime:
     runs-on: ubuntu-24.04
+    environment: Key
     timeout-minutes: 300
     env:
       FEXROOT_PATH: /data/data/org.anlr.linuxruntime/files/rootfs
