@@ -1,6 +1,7 @@
 package org.anlr.linuxruntime
 
 import java.io.File
+import java.security.MessageDigest
 
 /** Connects verified launch plans to the native PTY transport. */
 internal object LinuxGuestSession {
@@ -37,9 +38,47 @@ internal object LinuxGuestSession {
         columns: Int = 80,
         dependencyRootfs: File = if (backend == ExecutionBackend.FEX_X86_64) File(rootfs, "usr/share/anlr/x86_64") else rootfs
     ): NativePty {
+        val executable = importedExecutable.canonicalFile
+        require(executable.isFile) { "Imported application is missing" }
+        val selectedRoot = dependencyRootfs.canonicalFile
+        val stagedExecutable = if (backend == ExecutionBackend.NATIVE_ARM64) {
+            executable
+        } else {
+            // FEX resolves absolute paths inside FEX_ROOTFS. Box64 reads the
+            // executable through the host filesystem but uses guest libraries.
+            val digest = MessageDigest.getInstance("SHA-256")
+                .digest(executable.readBytes())
+                .take(8).joinToString("") { "%02x".format(it.toInt() and 0xff) }
+            val safeName = executable.name.replace(Regex("[^A-Za-z0-9._+-]"), "_").take(96)
+                .ifBlank { "application" }
+            val appDirectory = File(selectedRoot, "tmp/anlr-imports").apply {
+                check(mkdirs() || isDirectory) { "Cannot create guest application staging directory" }
+            }.canonicalFile
+            check(appDirectory.toPath().startsWith(selectedRoot.toPath())) {
+                "Guest application staging path escapes x86-64 rootfs"
+            }
+            val target = File(appDirectory, "$digest-$safeName")
+            if (!target.isFile || target.length() != executable.length()) {
+                executable.copyTo(target, overwrite = true)
+            }
+            check(target.setExecutable(true, false) || target.canExecute()) {
+                "Cannot set executable permission on staged Linux application"
+            }
+            target
+        }
+        val selectedBackendExecutable = backendExecutable ?: when (backend) {
+            ExecutionBackend.NATIVE_ARM64 -> null
+            ExecutionBackend.FEX_X86_64 -> File(rootfs, "usr/bin/FEX")
+            ExecutionBackend.BOX64_X86_64 -> File(rootfs, "usr/bin/box64")
+        }
+        val selectedWorkingDirectory = if (backend == ExecutionBackend.NATIVE_ARM64) {
+            workingDirectory
+        } else {
+            stagedExecutable.parentFile ?: selectedRoot
+        }
         val plan = LinuxLaunchPlanner.plan(
-            importedExecutable, rootfs, backend, backendExecutable,
-            arguments, workingDirectory, dependencyRootfs
+            stagedExecutable, rootfs, backend, selectedBackendExecutable,
+            arguments, selectedWorkingDirectory, selectedRoot
         )
         return NativePty.spawn(
             plan.executable.absolutePath, plan.arguments,
