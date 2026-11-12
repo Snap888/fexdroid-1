@@ -155,3 +155,18 @@ Java_org_anlr_linuxruntime_AnlrAudioBridge_holes(JNIEnv *env, jclass cls) {
     (void)env; (void)cls;
     return atomic_load(&a.holes);
 }
+
+JNIEXPORT void JNICALL
+Java_org_anlr_linuxruntime_AnlrAudioBridge_stop(JNIEnv *env, jclass cls) {
+    (void)env; (void)cls;
+    if (!atomic_exchange(&a.running, false)) return;
+    // Wake a reader blocked in open(FIFO, O_RDONLY) before joining it.
+    int wake = open(a.fifo, O_WRONLY | O_NONBLOCK | O_CLOEXEC);
+    if (wake >= 0) close(wake);
+    pthread_join(a.thread, NULL);
+    if (a.stream) {
+        AAudioStream_requestStop(a.stream);
+        AAudioStream_close(a.stream);
+        a.stream = NULL;
+    }
+}
