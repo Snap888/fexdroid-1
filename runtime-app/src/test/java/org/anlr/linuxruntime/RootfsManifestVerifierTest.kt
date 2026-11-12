@@ -86,7 +86,7 @@ class RootfsManifestVerifierTest {
             .toString().toByteArray()
         assertThrows(IllegalArgumentException::class.java) {
             RootfsManifestVerifier.verify(
-                unsafe, signed(unsafe, pair), publicKey, "anlr-test-key", 4096
+                unsafe, signed(unsafe, pair), publicKey, "anlr-test-key", 4096, 16384
             )
         }
     }
