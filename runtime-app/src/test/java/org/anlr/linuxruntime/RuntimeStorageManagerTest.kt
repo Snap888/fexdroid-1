@@ -31,6 +31,48 @@ class RuntimeStorageManagerTest {
         }
     }
 
+    @Test fun preservesNonEmptyLegacyRootfsAndDoesNotPublishRelease() {
+        val root = Files.createTempDirectory("anlr-legacy-rootfs-").toFile()
+        try {
+            val legacy = File(root, "rootfs")
+            assertTrue(legacy.mkdirs())
+            val legacyData = File(legacy, "keep.txt")
+            legacyData.writeText("legacy data")
+            val manager = RuntimeStorageManager(root)
+            val staged = manager.createStagingRelease("new-release")
+            assertTrue(File(staged, "rootfs").mkdirs())
+            val checksum = digest("new manifest")
+            manager.markComplete("new-release", checksum)
+            try {
+                manager.activate("new-release", checksum)
+                throw AssertionError("Expected non-empty legacy rootfs to block activation")
+            } catch (_: IllegalStateException) { }
+            assertEquals("legacy data", legacyData.readText())
+            assertNull(manager.activeReleaseId())
+            assertTrue(staged.isDirectory)
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+    @Test fun replacesOnlyEmptyLegacyRootfsDirectory() {
+        val root = Files.createTempDirectory("anlr-empty-legacy-rootfs-").toFile()
+        try {
+            val legacy = File(root, "rootfs")
+            assertTrue(legacy.mkdirs())
+            val manager = RuntimeStorageManager(root)
+            val staged = manager.createStagingRelease("new-release")
+            assertTrue(File(staged, "rootfs").mkdirs())
+            val checksum = digest("new manifest")
+            manager.markComplete("new-release", checksum)
+            manager.activate("new-release", checksum)
+            assertTrue(Files.isSymbolicLink(legacy.toPath()))
+            assertEquals("new-release", manager.activeReleaseId())
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
     @Test fun refusesChecksumMismatchAndIncompleteRelease() {
         val root = Files.createTempDirectory("anlr-storage-").toFile()
         try {
