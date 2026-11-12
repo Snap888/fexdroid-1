@@ -122,10 +122,39 @@ jobs:
             exit 0
           fi
           mkdir -p build/anlr-release/signed
-          printf '%s' "$RELEASE_PRIVATE_KEY_B64" | base64 -d > build/anlr-release/release-key.pem
+          python3 - "$RELEASE_PRIVATE_KEY_B64" build/anlr-release/release-key.pem <<'PY'
+          import base64, pathlib, sys
+          value, output = sys.argv[1:]
+          raw = value.strip().encode()
+          if raw.startswith(b"-----BEGIN "):
+              decoded = raw + (b"\\n" if not raw.endswith(b"\\n") else b"")
+          else:
+              compact = b"".join(raw.split())
+              compact += b"=" * ((4 - len(compact) % 4) % 4)
+              try:
+                  decoded = base64.b64decode(compact, altchars=b"-_", validate=True)
+              except Exception as exc:
+                  raise SystemExit("Private key secret is neither PEM nor valid standard/URL-safe base64") from exc
+          if not decoded.startswith(b"-----BEGIN PRIVATE KEY-----"):
+              raise SystemExit("Private key must be an unencrypted PKCS#8 PEM (BEGIN PRIVATE KEY)")
+          pathlib.Path(output).write_bytes(decoded)
+          PY
+          chmod 600 build/anlr-release/release-key.pem
           openssl pkey -in build/anlr-release/release-key.pem -noout >/dev/null
           DER_PUBLIC="$(openssl pkey -in build/anlr-release/release-key.pem -pubout -outform DER | base64 -w0)"
-          [[ "$DER_PUBLIC" == "$RELEASE_PUBLIC_KEY_B64" ]] || {
+          CONFIGURED_PUBLIC="$(python3 - "$RELEASE_PUBLIC_KEY_B64" <<'PY'
+          import base64, sys
+          raw = sys.argv[1].strip().encode()
+          if raw.startswith(b"-----BEGIN "):
+              import subprocess
+              p = subprocess.run(["openssl","pkey","-pubin","-in","/dev/stdin","-outform","DER"],input=raw,stdout=subprocess.PIPE,check=True)
+              print(base64.b64encode(p.stdout).decode(),end="")
+          else:
+              compact=b"".join(raw.split()); compact+=b"="*((4-len(compact)%4)%4)
+              print(base64.b64encode(base64.b64decode(compact,altchars=b"-_",validate=True)).decode(),end="")
+          PY
+          )"
+          [[ "$DER_PUBLIC" == "$CONFIGURED_PUBLIC" ]] || {
             echo "Configured public key does not match private release key." >&2
             exit 1
           }
