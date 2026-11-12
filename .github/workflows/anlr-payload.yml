@@ -59,7 +59,7 @@ jobs:
       - name: Validate build scripts
         run: |
           find scripts -type f -name '*.sh' -print0 | xargs -0 -n1 bash -n
-          chmod +x scripts/*.sh scripts/lib/*.sh
+          find scripts -type f -name '*.sh' -exec chmod +x {} +
 
       - uses: actions/cache@v4
         with:
