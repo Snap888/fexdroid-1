@@ -27,6 +27,7 @@ echo "Build dependencies and payload under this same path."
 if [[ "${ANLR_PREBUILT_STAGES:-0}" != 1 ]]; then
   scripts/build-rootfs.sh
   scripts/build-x86-sysroot.sh
+  scripts/build-ubuntu-rootfs.sh
   scripts/build-glibc.sh
   scripts/build-fex.sh
   scripts/build-box64.sh
