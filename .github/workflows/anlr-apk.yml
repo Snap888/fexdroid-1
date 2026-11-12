@@ -6,6 +6,10 @@ on:
     branches: [anlr/separate-linux-runtime]
     paths:
       - 'runtime-app/**'
+      - 'scripts/build-anlr-payload.sh'
+      - 'scripts/build-payload.sh'
+      - 'scripts/config.sh'
+      - 'scripts/test-payload-qemu.sh'
       - 'settings.gradle.kts'
       - 'build.gradle.kts'
       - 'gradle/**'
@@ -37,6 +41,8 @@ jobs:
           yes | "$SDKM" --licenses >/dev/null
           "$SDKM" --install "platform-tools" "ndk;29.0.14206865" "cmake;3.22.1" >/dev/null
           "$SDKM" --install "platforms;android-37" >/dev/null || true
+      - name: Validate ANLR payload build script syntax
+        run: bash -n scripts/build-anlr-payload.sh scripts/build-payload.sh scripts/config.sh scripts/test-payload-qemu.sh
       - name: Build independent runtime APK
         run: ./gradlew --no-daemon --stacktrace :runtime-app:testDebugUnitTest :runtime-app:assembleDebug
       - uses: actions/upload-artifact@v4
