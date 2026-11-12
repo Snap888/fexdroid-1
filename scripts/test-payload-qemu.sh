@@ -8,7 +8,7 @@ cd "$(dirname "$0")/.."
 source scripts/config.sh
 scripts/ensure-binfmt.sh >/dev/null
 FILES="$(dirname "$FXD_ROOT")"   # x86_64 guest rootfs sits next to $FXD_ROOT
-STAGE="$PWD/build/payload-stage"
+STAGE="$PWD/${ANLR_STAGE_DIR:-build/payload-stage}"
 CMD="${1:-uname -a; ls /; echo; ls \$FXD_ROOT}"
 docker run --rm --platform linux/arm64 --user "$(id -u):$(id -g)" \
   -v "$STAGE/arm64:$FXD_ROOT" -v "$STAGE/x86_64:$FILES/x86_64:ro" \
