@@ -50,6 +50,5 @@ mv "$OUT/ubuntu-arm64-stage/packages.txt" "$OUT/ubuntu-arm64.packages.txt"
 tar -C "$OUT/ubuntu-arm64-stage" --numeric-owner --owner=0 --group=0 --sort=name --mtime='@0' \
   --hard-dereference -cf "$OUT/ubuntu-arm64.tar" .
 rm -rf "$OUT/ubuntu-arm64-stage"
-cp "$OUT/ubuntu-arm64.packages.txt" "$OUT/ubuntu-arm64.packages.txt"
 echo "Ubuntu runtime rootfs: $OUT/ubuntu-arm64.tar"
 du -h "$OUT/ubuntu-arm64.tar"
