@@ -35,7 +35,7 @@ internal object LinuxGuestSession {
         workingDirectory: File = importedExecutable.parentFile ?: rootfs,
         rows: Int = 24,
         columns: Int = 80,
-        dependencyRootfs: File = rootfs
+        dependencyRootfs: File = if (backend == ExecutionBackend.FEX_X86_64) File(rootfs, "usr/share/anlr/x86_64") else rootfs
     ): NativePty {
         val plan = LinuxLaunchPlanner.plan(
             importedExecutable, rootfs, backend, backendExecutable,
