@@ -52,7 +52,7 @@ class LinuxLaunchPlannerTest {
         val temp = Files.createTempDirectory("anlr-plan-fex-").toFile()
         val host = File(temp, "host").apply { mkdirs() }
         val guest = File(host, "usr/share/anlr/x86_64").apply { mkdirs() }
-        val app = File(temp, "imports/x64-app").apply { parentFile.mkdirs(); writeBytes(staticElf(62)) }
+        val app = File(guest, "tmp/anlr-imports/x64-app").apply { parentFile.mkdirs(); writeBytes(staticElf(62)) }
         val fex = File(host, "usr/bin/FEX").apply { parentFile.mkdirs(); writeBytes(staticElf(183)); setExecutable(true) }
         try {
             val plan = LinuxLaunchPlanner.plan(
@@ -60,9 +60,30 @@ class LinuxLaunchPlannerTest {
                 dependencyRootfs = guest
             )
             assertEquals(fex.canonicalFile, plan.executable.canonicalFile)
-            assertEquals(app.canonicalPath, plan.arguments.first())
+            assertEquals("/tmp/anlr-imports/x64-app", plan.arguments.first())
             assertEquals(host.canonicalPath, plan.environment["ANLR_ROOTFS"])
             assertEquals(guest.canonicalPath, plan.environment["FEX_ROOTFS"])
+        } finally {
+            temp.deleteRecursively()
+        }
+    }
+
+    @Test fun configuresBox64LibraryPathAndKeepsHostExecutablePath() {
+        val temp = Files.createTempDirectory("anlr-plan-box64-").toFile()
+        val host = File(temp, "host").apply { mkdirs() }
+        val guest = File(host, "usr/share/anlr/x86_64").apply { mkdirs() }
+        val app = File(guest, "tmp/anlr-imports/x64-app").apply { parentFile.mkdirs(); writeBytes(staticElf(62)) }
+        val box64 = File(host, "usr/bin/box64").apply { parentFile.mkdirs(); writeBytes(staticElf(183)); setExecutable(true) }
+        File(guest, "lib/x86_64-linux-gnu").mkdirs()
+        try {
+            val plan = LinuxLaunchPlanner.plan(
+                app, host, ExecutionBackend.BOX64_X86_64, box64,
+                dependencyRootfs = guest
+            )
+            assertEquals(box64.canonicalFile, plan.executable.canonicalFile)
+            assertEquals(app.canonicalPath, plan.arguments.first())
+            assertEquals("1", plan.environment["BOX64_DYNAREC"])
+            assertTrue(plan.environment["BOX64_LD_LIBRARY_PATH"]!!.contains("x86_64-linux-gnu"))
         } finally {
             temp.deleteRecursively()
         }
