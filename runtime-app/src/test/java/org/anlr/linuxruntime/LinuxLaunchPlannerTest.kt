@@ -56,7 +56,7 @@ class LinuxLaunchPlannerTest {
         val fex = File(host, "usr/bin/FEX").apply { parentFile.mkdirs(); writeBytes(staticElf(183)); setExecutable(true) }
         try {
             val plan = LinuxLaunchPlanner.plan(
-                app, host, ExecutionBackend.FEX_X86_64, fex,
+                app, host, ExecutionBackend.FEX_X86_64,
                 dependencyRootfs = guest
             )
             assertEquals(fex.canonicalFile, plan.executable.canonicalFile)
@@ -77,7 +77,7 @@ class LinuxLaunchPlannerTest {
         File(guest, "lib/x86_64-linux-gnu").mkdirs()
         try {
             val plan = LinuxLaunchPlanner.plan(
-                app, host, ExecutionBackend.BOX64_X86_64, box64,
+                app, host, ExecutionBackend.BOX64_X86_64,
                 dependencyRootfs = guest
             )
             assertEquals(box64.canonicalFile, plan.executable.canonicalFile)
