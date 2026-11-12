@@ -33,7 +33,7 @@ docker run --platform linux/arm64 --name "$NAME" ubuntu:24.04 bash -euc "
   export DEBIAN_FRONTEND=noninteractive
   apt-get update -qq
   apt-get install -y -qq --no-install-recommends ${RUNTIME_PKGS[*]} >/dev/null
-  dpkg-query -W -f='${Package} ${Version}\n' > /packages.txt
+  dpkg-query -W -f='\${Package} \${Version}\n' > /packages.txt
   apt-get clean
   rm -rf /var/lib/apt/lists/* /var/cache/debconf/*-old /var/log/* /tmp/* /var/tmp/*
 "
