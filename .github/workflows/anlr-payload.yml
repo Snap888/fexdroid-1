@@ -89,6 +89,13 @@ jobs:
         if: steps.glibc.outputs.cache-hit != 'true'
         run: bash scripts/build-glibc.sh 2>&1 | tail -50
 
+      - name: Verify pinned LLVM toolchain
+        run: |
+          clang --version | head -1
+          llvm-config --version
+          test -f /usr/lib/llvm-22/lib/cmake/clang/ClangConfig.cmake
+          test -f /usr/lib/llvm-22/lib/cmake/llvm/LLVMConfig.cmake
+
       - name: Build FEX and thunks
         run: bash scripts/build-fex.sh 2>&1 | tail -60
 
