@@ -69,7 +69,7 @@ class ElfCompatibilityCheckerTest {
             loader.writeText("")
             File(root, "usr/lib/aarch64-linux-gnu/libc.so.6").writeText("")
             val report = ElfCompatibilityChecker.check(
-                elf(interpreter = loader.absolutePath), root, ExecutionBackend.NATIVE_ARM64
+                elf(interpreter = "/usr/lib/aarch64-linux-gnu/ld-linux-aarch64.so.1"), root, ExecutionBackend.NATIVE_ARM64
             )
             assertTrue(report.compatible)
             assertEquals(loader.absolutePath, report.resolvedLibraries["PT_INTERP"])
