@@ -48,7 +48,7 @@ rm -rf "$ANLR_GUEST"
 cp -a "$X" "$ANLR_GUEST"
 
 # Point FEX at the nested guest rootfs instead of the legacy sibling directory.
-python3 - "$A/usr/share/fex-emu/Config.json" "$ANLR_GUEST" <<'PY'
+python3 - "$A/usr/share/fex-emu/Config.json" "$FXD_ROOT/usr/share/anlr/x86_64" <<'PY'
 import json, pathlib, sys
 p = pathlib.Path(sys.argv[1])
 cfg = json.loads(p.read_text())
