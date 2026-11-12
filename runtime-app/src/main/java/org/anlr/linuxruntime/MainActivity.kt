@@ -37,6 +37,8 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.viewinterop.AndroidView
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.isActive
@@ -780,13 +782,26 @@ private fun TerminalScreen(
 @Composable
 private fun DesktopScreen() {
     val context = androidx.compose.ui.platform.LocalContext.current
+    val scope = rememberCoroutineScope()
     var componentReport by remember { mutableStateOf<RuntimeComponentReport?>(null) }
     var componentStatus by remember { mutableStateOf("Проверка установленной системы…") }
-    LaunchedEffect(Unit) {
+    var resolution by remember { mutableStateOf("1280×720") }
+    var scale by remember { mutableFloatStateOf(1f) }
+    var fullscreen by remember { mutableStateOf(true) }
+    var session by remember { mutableStateOf<AnlrDesktopSession?>(null) }
+    var surface by remember { mutableStateOf<AnlrDesktopSurface?>(null) }
+    var starting by remember { mutableStateOf(false) }
+    var logText by remember { mutableStateOf("") }
+    val rootfs by produceState<File?>(initialValue = null) {
+        value = withContext(Dispatchers.IO) {
+            runCatching { RuntimeStorageManager(context.filesDir).activeRootDirectory() }.getOrNull()
+        }
+    }
+
+    LaunchedEffect(rootfs) {
         val result = withContext(Dispatchers.IO) {
             runCatching {
-                val root = RuntimeStorageManager(context.filesDir).activeRootDirectory()
-                    ?: error("Linux rootfs не установлен или не активирован")
+                val root = rootfs ?: error("Linux rootfs не установлен или не активирован")
                 RuntimeComponentVerifier.inspect(root)
             }
         }
@@ -795,45 +810,100 @@ private fun DesktopScreen() {
             componentStatus = if (it.desktopReady) "Компоненты XFCE4 и X11 найдены" else "Не хватает: ${it.missing.joinToString()}"
         }.onFailure { componentStatus = it.message ?: "Не удалось проверить Linux rootfs" }
     }
-    val prefs = remember { context.getSharedPreferences("anlr_xfce_profile", 0) }
-    var resolution by remember { mutableStateOf(prefs.getString("resolution", "1280×720") ?: "1280×720") }
-    var scale by remember { mutableFloatStateOf(prefs.getFloat("scale", 1f)) }
-    var fullscreen by remember { mutableStateOf(prefs.getBoolean("fullscreen", true)) }
-    var saved by remember { mutableStateOf(false) }
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(18.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
-        Text("Рабочий стол", style = MaterialTheme.typography.headlineSmall)
-        Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)) {
-            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text(
-                    when {
-                        componentReport?.desktopReady == true -> "XFCE4 установлен"
-                        componentReport == null -> "Состояние XFCE4 неизвестно"
-                        else -> "Компоненты XFCE4 отсутствуют"
-                    },
-                    style = MaterialTheme.typography.titleLarge
-                )
-                Text(componentStatus)
-                Text("Важно: наличие XFCE4 и Xvfb в rootfs ещё не запускает рабочий стол. В этой версии самостоятельного ANLR-приложения пока не подключён Android framebuffer/display bridge и передача ввода в X11. Поэтому полноценная графическая сессия здесь ещё не доступна.")
-            }
+
+    DisposableEffect(session) {
+        onDispose {
+            surface = null
+            session?.let { current -> scope.launch(Dispatchers.IO) { runCatching { current.close() } } }
         }
-        Text("Параметры сеанса", style = MaterialTheme.typography.titleMedium)
-        Text("Разрешение")
-        listOf("1280×720", "1600×900", "1920×1080", "По размеру экрана").forEach { value ->
-            Row(Modifier.fillMaxWidth().clickable { resolution = value }.padding(vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
-                RadioButton(selected = resolution == value, onClick = { resolution = value })
-                Text(value)
-            }
-        }
-        Text("Масштаб: ${(scale * 100).toInt()}%")
-        Slider(value = scale, onValueChange = { scale = it }, valueRange = 0.75f..1.5f)
+    }
+
+    val activity = context as? android.app.Activity
+    LaunchedEffect(fullscreen) {
+        activity?.window?.decorView?.systemUiVisibility = if (fullscreen) {
+            android.view.View.SYSTEM_UI_FLAG_FULLSCREEN or
+                android.view.View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or
+                android.view.View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY or
+                android.view.View.SYSTEM_UI_FLAG_LAYOUT_STABLE or
+                android.view.View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION or
+                android.view.View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN
+        } else 0
+    }
+
+    val dimensions = resolution.split("×")
+    val width = dimensions.getOrNull(0)?.toIntOrNull() ?: 1280
+    val height = dimensions.getOrNull(1)?.toIntOrNull() ?: 720
+
+    Column(Modifier.fillMaxSize().padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
-            Text("Полноэкранный режим")
-            Switch(checked = fullscreen, onCheckedChange = { fullscreen = it })
+            Column(Modifier.weight(1f)) {
+                Text("Рабочий стол XFCE4", style = MaterialTheme.typography.titleLarge)
+                Text(componentStatus, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            if (session == null) {
+                Button(enabled = !starting && componentReport?.desktopReady == true, onClick = {
+                    val root = rootfs ?: return@Button
+                    starting = true
+                    scope.launch {
+                        var created: AnlrDesktopSession? = null
+                        val result = withContext(Dispatchers.IO) {
+                            runCatching {
+                                created = AnlrDesktopSession(root, width, height) { line ->
+                                    scope.launch { logText = (logText + line + "\n").takeLast(12_000) }
+                                }
+                                val current = requireNotNull(created)
+                                val id = current.start()
+                                val audio = runCatching { current.startAudio() }.getOrElse { "Audio unavailable: ${it.message}" }
+                                current.startXfce()
+                                "Xvfb ready (shmid=$id)\n$audio\nXFCE4 session started"
+                            }
+                        }
+                        result.onSuccess { message ->
+                            session = created
+                            logText = (logText + message + "\n").takeLast(12_000)
+                        }.onFailure { error ->
+                            created?.let { withContext(Dispatchers.IO) { runCatching { it.close() } } }
+                            logText = (logText + "START FAILED: ${error.message}\n").takeLast(12_000)
+                        }
+                        starting = false
+                    }
+                }) { Text(if (starting) "Запуск…" else "Запустить XFCE") }
+            } else {
+                OutlinedButton(onClick = {
+                    val old = session
+                    session = null
+                    surface = null
+                    scope.launch(Dispatchers.IO) { runCatching { old?.close() } }
+                }) { Text("Остановить") }
+            }
         }
-        OutlinedButton(onClick = {
-            prefs.edit().putString("resolution", resolution).putFloat("scale", scale).putBoolean("fullscreen", fullscreen).apply()
-            saved = true
-        }) { Text("Сохранить профиль XFCE") }
-        Text(if (saved) "Профиль сохранён на устройстве." else "Профиль: $resolution · масштаб ${(scale * 100).toInt()}% · ${if (fullscreen) "fullscreen" else "windowed"}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+
+        if (session == null) {
+            Text("Разрешение")
+            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                listOf("1280×720", "1600×900", "1920×1080").forEach { option ->
+                    FilterChip(selected = resolution == option, onClick = { resolution = option }, label = { Text(option) }, enabled = !starting)
+                }
+            }
+            Text("Масштаб: ${(scale * 100).toInt()}%")
+            Slider(value = scale, onValueChange = { scale = it }, valueRange = 0.75f..1.5f)
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                Text("Полноэкранный режим")
+                Switch(checked = fullscreen, onCheckedChange = { fullscreen = it })
+            }
+            Text("Для запуска необходим полный ANLR rootfs с XFCE4, Xvfb, dbus-launch и PulseAudio. После старта изображение будет передаваться через shared framebuffer в Android Surface.", style = MaterialTheme.typography.bodySmall)
+        } else {
+            val active = session!!
+            AndroidView(
+                factory = {
+                    AnlrDesktopSurface(it, width, height, active.shmSocket, active.shmid).also { view -> surface = view }
+                },
+                modifier = Modifier.weight(1f).fillMaxWidth().graphicsLayer(scaleX = scale, scaleY = scale)
+            )
+            Text(surface?.bridgeStatus ?: "Подключение Surface…", style = MaterialTheme.typography.labelSmall)
+            Text("Кадры: ${runCatching { AnlrDisplayBridge.frames() }.getOrDefault(0)} · AAudio: ${runCatching { AnlrAudioBridge.frames() }.getOrDefault(0)}", style = MaterialTheme.typography.labelSmall)
+            OutlinedButton(onClick = { logText = "" }) { Text("Очистить журнал") }
+            Text(logText, Modifier.fillMaxWidth().heightIn(max = 110.dp).verticalScroll(rememberScrollState()), fontFamily = FontFamily.Monospace, fontSize = 10.sp)
+        }
     }
 }
