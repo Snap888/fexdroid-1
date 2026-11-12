@@ -46,6 +46,7 @@ internal object RootfsInstaller {
         if (published != null) {
             val publishedRoot = File(published, "rootfs")
             validateRootfsIdentity(publishedRoot, manifest.runtimeAbi, filesDir)
+            RuntimeComponentVerifier.requireComplete(publishedRoot)
             storage.activate(manifest.releaseId, manifest.manifestSha256)
             return RootfsInstallResult(
                 manifest.releaseId, storage.activeRootDirectory() ?: publishedRoot, 0, 0, manifest.manifestSha256
@@ -59,6 +60,7 @@ internal object RootfsInstaller {
         if (storage.isStagingReleaseComplete(manifest.releaseId, manifest.manifestSha256)) {
             val stagedRoot = File(staging, "rootfs")
             validateRootfsIdentity(stagedRoot, manifest.runtimeAbi, filesDir)
+            RuntimeComponentVerifier.requireComplete(stagedRoot)
             storage.activate(manifest.releaseId, manifest.manifestSha256)
             return RootfsInstallResult(
                 manifest.releaseId, storage.activeRootDirectory() ?: File(storage.releaseDirectory(manifest.releaseId)!!, "rootfs"),
@@ -87,6 +89,7 @@ internal object RootfsInstaller {
             archive, extractedRoot, manifest.expandedSizeBytes
         )
         validateRootfsIdentity(extractedRoot, manifest.runtimeAbi, filesDir)
+        RuntimeComponentVerifier.requireComplete(extractedRoot)
         storage.updateStagingJournal(manifest.releaseId, manifest.manifestSha256, RootfsInstallPhase.EXTRACTED)
         storage.markComplete(manifest.releaseId, manifest.manifestSha256)
         storage.activate(manifest.releaseId, manifest.manifestSha256)
@@ -136,6 +139,7 @@ internal object RootfsInstaller {
         if (published != null) {
             val root = File(published, "rootfs")
             validateRootfsIdentity(root, "anlr-glibc-v1", filesDir)
+            RuntimeComponentVerifier.requireComplete(root)
             storage.activate(releaseId, sha256)
             return RootfsInstallResult(releaseId, storage.activeRootDirectory() ?: root, 0, 0, sha256)
         }
@@ -154,6 +158,7 @@ internal object RootfsInstaller {
         check(root.mkdirs()) { "Cannot create local rootfs extraction directory" }
         val extraction = SafeRootfsExtractor.extractTarGz(archive, root, maxExtractedBytes)
         validateRootfsIdentity(root, "anlr-glibc-v1", filesDir)
+        RuntimeComponentVerifier.requireComplete(root)
         val osRelease = File(root, "etc/os-release").takeIf { it.isFile }?.readText().orEmpty()
         val actualDistro = when {
             Regex("(?m)^ID=ubuntu$").containsMatchIn(osRelease) -> "Ubuntu"
