@@ -109,12 +109,15 @@ internal object RootfsInstaller {
         val runtimeRoot = File(rootfs, "usr/lib/anlr/runtime-root")
         check(runtimeRoot.isFile) { "Rootfs is missing its compiled runtime-root identity" }
         val compiledPath = File(runtimeRoot.readText().trim()).absoluteFile
-        check(compiledPath.name == "rootfs" && compiledPath.parentFile != null) {
+        check(compiledPath.name == "rootfs") {
             "Rootfs contains an invalid compiled runtime-root path"
+        }
+        val compiledParent = requireNotNull(compiledPath.parentFile) {
+            "Rootfs compiled runtime-root path has no parent"
         }
         // Canonicalize only the parent: filesDir/rootfs may already be a symlink
         // to the currently active release, but the compiled ABI path is that stable link.
-        val compiledRoot = File(compiledPath.parentFile.canonicalFile, compiledPath.name)
+        val compiledRoot = File(compiledParent.canonicalFile, compiledPath.name)
         val expectedRoot = File(filesDir.canonicalFile, "rootfs")
         check(compiledRoot == expectedRoot) {
             "Rootfs was built for a different Android package path: $compiledRoot (expected $expectedRoot)"
