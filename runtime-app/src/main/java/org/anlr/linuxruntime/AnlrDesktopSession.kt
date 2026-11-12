@@ -111,11 +111,11 @@ internal class AnlrDesktopSession(
         val fifo = File(audioFifo)
         fifo.delete()
         Os.mkfifo(fifo.absolutePath, 384)
-        val audioStatus = AnlrAudioBridge.start(fifo.absolutePath)
-        check(audioStatus.contains("-> AAudio")) { audioStatus }
         val moduleDir = rootfs.resolve("usr/lib").listFiles()
             ?.firstOrNull { it.name.startsWith("pulse-") }?.resolve("modules")
             ?: error("PulseAudio modules directory is missing")
+        val audioStatus = AnlrAudioBridge.start(fifo.absolutePath)
+        check(audioStatus.contains("-> AAudio")) { audioStatus }
         launch(
             "/usr/bin/pulseaudio",
             listOf(
@@ -147,6 +147,7 @@ internal class AnlrDesktopSession(
         all.forEach { p -> runCatching { p.sendSignal(15) } }
         all.forEach { p -> runCatching { p.close() } }
         runCatching { AnlrDisplayBridge.stop() }
+        runCatching { AnlrAudioBridge.stop() }
         shmid = -1
         File(rootfs, "tmp/.X0-lock").delete()
         File(audioFifo).delete()
