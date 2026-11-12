@@ -53,6 +53,12 @@ internal object SafeRootfsExtractor {
                         entries++
                         check(entries <= MAX_ENTRIES) { "Rootfs archive contains too many entries" }
                         val target = resolveArchivePath(root, entry.name)
+                        // GNU tar commonly emits a leading "." directory entry.
+                        // It denotes the already-created destination, not a parent path.
+                        if (target == root) {
+                            check(entry.isDirectory) { "Rootfs archive root entry must be a directory" }
+                            continue
+                        }
                         ensureSafeParents(root, target.parent)
 
                         when {
@@ -137,7 +143,13 @@ internal object SafeRootfsExtractor {
             "Rootfs archive path traversal rejected"
         }
         val relative = Paths.get(rawName).normalize()
-        require(!relative.isAbsolute && relative.toString().isNotEmpty() && relative.none { it.toString() == ".." }) {
+        if (relative.toString().isEmpty()) {
+            require(rawName.split('/').all { it.isEmpty() || it == "." }) {
+                "Invalid rootfs archive root entry"
+            }
+            return root
+        }
+        require(!relative.isAbsolute && relative.none { it.toString() == ".." }) {
             "Rootfs archive path traversal rejected"
         }
         val resolved = root.resolve(relative).normalize()
