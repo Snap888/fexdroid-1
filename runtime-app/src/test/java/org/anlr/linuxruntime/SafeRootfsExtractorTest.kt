@@ -27,6 +27,23 @@ class SafeRootfsExtractorTest {
         return file
     }
 
+    @Test fun acceptsGnuTarRootDirectoryEntry() {
+        val bytes = "PRETTY_NAME=Debian".toByteArray()
+        val tar = archive(
+            TarArchiveEntry(".", TarConstants.LF_DIR) to byteArrayOf(),
+            TarArchiveEntry("./etc/os-release") to bytes
+        )
+        val root = Files.createTempDirectory("anlr-rootfs-dot-entry-").toFile()
+        try {
+            val result = SafeRootfsExtractor.extractTarGz(tar, root, 1024)
+            assertEquals(2, result.entriesExtracted)
+            assertEquals("PRETTY_NAME=Debian", File(root, "etc/os-release").readText())
+        } finally {
+            tar.delete()
+            root.deleteRecursively()
+        }
+    }
+
     @Test fun extractsRegularFilesAndRelativeSymlinks() {
         val bytes = "PRETTY_NAME=Debian".toByteArray()
         val tar = archive(
