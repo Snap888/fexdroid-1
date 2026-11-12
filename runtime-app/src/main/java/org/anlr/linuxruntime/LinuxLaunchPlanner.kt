@@ -98,6 +98,17 @@ internal object LinuxLaunchPlanner {
             "ANLR_ROOTFS" to canonicalRoot.absolutePath
         )
         environment["FXD_ROOT"] = canonicalRoot.absolutePath
+        if (backend == ExecutionBackend.FEX_X86_64) {
+            val guestRoot = File(canonicalRoot, "usr/share/anlr/x86_64").canonicalFile
+            check(guestRoot.isDirectory && guestRoot == canonicalDependencyRoot) {
+                "ANLR FEX guest rootfs is missing or does not match the packaged guest path"
+            }
+            environment["FEX_ROOTFS"] = guestRoot.absolutePath
+            val fexHome = File(canonicalRoot, "home/anlr/.fex-emu")
+            environment["FEX_APP_CONFIG_LOCATION"] = fexHome.absolutePath + "/"
+            environment["FEX_APP_DATA_LOCATION"] = fexHome.absolutePath + "/"
+            environment["FEX_APP_CACHE_LOCATION"] = File(canonicalRoot, "home/anlr/.cache/fex-emu").absolutePath + "/"
+        }
         if (backend == ExecutionBackend.NATIVE_ARM64) {
             val pathShim = File(canonicalRoot, "usr/lib/fexdroid/libfxpath.so")
             if (pathShim.isFile) environment["LD_PRELOAD"] = pathShim.absolutePath
