@@ -343,7 +343,7 @@ private fun AppsScreen(apps: List<ImportedApp>, onImport: () -> Unit, onLaunch: 
                             }
                             Text("SHA-256: ${app.sha256.take(20)}…", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
                             Text(integrity, style = MaterialTheme.typography.bodySmall, color = if (integrity.startsWith("ОШИБКА")) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
-                            Text(if (app.executableCandidate) "ELF/скрипт-кандидат · запуск ожидает Linux backend" else "Требуется обработчик формата · запуск отключён", style = MaterialTheme.typography.bodySmall)
+                            Text(if (app.executableCandidate) "Исполняемый файл-кандидат · запуск через установленный backend" else "Формат пока не поддерживается для прямого запуска", style = MaterialTheme.typography.bodySmall)
                             if (app.interpreter.isNotBlank()) Text("Интерпретатор: ${app.interpreter}", style = MaterialTheme.typography.bodySmall)
                             if (app.neededLibraries.isNotEmpty()) Text(
                                 "DT_NEEDED: ${app.neededLibraries.joinToString()}",
@@ -359,7 +359,7 @@ private fun AppsScreen(apps: List<ImportedApp>, onImport: () -> Unit, onLaunch: 
                 }
             }
         }
-        Text("Импорт копирует файл в приватное хранилище ANLR, вычисляет SHA-256 и определяет ELF e_machine. Это проверка формата, а не гарантия безопасности. Исполнение отключено до установки Linux rootfs и backend.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("Импорт копирует файл в приватное хранилище ANLR и проверяет SHA-256 перед запуском. Запускаются ELF AArch64 через ARM64 и ELF x86-64 через FEX или Box64. Импортированные программы остаются недоверенным кодом.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 @Composable
@@ -773,6 +773,21 @@ private fun TerminalScreen(
 @Composable
 private fun DesktopScreen() {
     val context = androidx.compose.ui.platform.LocalContext.current
+    var componentReport by remember { mutableStateOf<RuntimeComponentReport?>(null) }
+    var componentStatus by remember { mutableStateOf("Проверка установленной системы…") }
+    LaunchedEffect(Unit) {
+        val result = withContext(Dispatchers.IO) {
+            runCatching {
+                val root = RuntimeStorageManager(context.filesDir).activeRootDirectory()
+                    ?: error("Linux rootfs не установлен или не активирован")
+                RuntimeComponentVerifier.inspect(root)
+            }
+        }
+        result.onSuccess {
+            componentReport = it
+            componentStatus = if (it.desktopReady) "Компоненты XFCE4 и X11 найдены" else "Не хватает: ${it.missing.joinToString()}"
+        }.onFailure { componentStatus = it.message ?: "Не удалось проверить Linux rootfs" }
+    }
     val prefs = remember { context.getSharedPreferences("anlr_xfce_profile", 0) }
     var resolution by remember { mutableStateOf(prefs.getString("resolution", "1280×720") ?: "1280×720") }
     var scale by remember { mutableFloatStateOf(prefs.getFloat("scale", 1f)) }
@@ -782,8 +797,16 @@ private fun DesktopScreen() {
         Text("Рабочий стол", style = MaterialTheme.typography.headlineSmall)
         Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer)) {
             Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("XFCE4 не установлен", style = MaterialTheme.typography.titleLarge)
-                Text("Здесь будут запускаться полноценная XFCE-сессия Linux, панель задач, файловый менеджер и оконный менеджер. Сейчас доступна настройка профиля, но запуск заблокирован до установки rootfs, X-сервера и аудио/ввода.")
+                Text(
+                    when {
+                        componentReport?.desktopReady == true -> "XFCE4 установлен"
+                        componentReport == null -> "Состояние XFCE4 неизвестно"
+                        else -> "Компоненты XFCE4 отсутствуют"
+                    },
+                    style = MaterialTheme.typography.titleLarge
+                )
+                Text(componentStatus)
+                Text("Важно: наличие XFCE4 и Xvfb в rootfs ещё не запускает рабочий стол. В этой версии самостоятельного ANLR-приложения пока не подключён Android framebuffer/display bridge и передача ввода в X11. Поэтому полноценная графическая сессия здесь ещё не доступна.")
             }
         }
         Text("Параметры сеанса", style = MaterialTheme.typography.titleMedium)
