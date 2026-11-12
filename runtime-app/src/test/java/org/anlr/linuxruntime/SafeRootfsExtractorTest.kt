@@ -58,6 +58,17 @@ class SafeRootfsExtractorTest {
             root1.deleteRecursively()
         }
 
+        val normalizedTraversal = archive(TarArchiveEntry("usr/../escape") to "x".toByteArray())
+        val rootAlias = Files.createTempDirectory("anlr-rootfs-alias-").toFile()
+        try {
+            assertThrows(IllegalArgumentException::class.java) {
+                SafeRootfsExtractor.extractTarGz(normalizedTraversal, rootAlias, 1024)
+            }
+        } finally {
+            normalizedTraversal.delete()
+            rootAlias.deleteRecursively()
+        }
+
         val symlink = TarArchiveEntry("bin/sh", TarConstants.LF_SYMLINK)
         symlink.linkName = "/usr/bin/dash"
         val safeLink = archive(symlink to byteArrayOf())
