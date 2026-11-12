@@ -68,8 +68,16 @@ for pkg in "${THUNK_HOST_DEV_DEBS[@]}"; do
 done
 
 # ---- thunkgen (native) -------------------------------------------------------------
+CLANG_CMAKE_DIR="$(clang --print-resource-dir | sed 's|/lib/clang/[^/]*$|/lib/cmake/clang|')"
+LLVM_CMAKE_DIR="$(llvm-config --cmakedir)"
+[[ -f "$CLANG_CMAKE_DIR/ClangConfig.cmake" ]] || CLANG_CMAKE_DIR="/usr/lib/llvm-22/lib/cmake/clang"
+[[ -f "$CLANG_CMAKE_DIR/ClangConfig.cmake" ]] || {
+  echo "Cannot locate ClangConfig.cmake for $(clang --version | head -1)" >&2
+  exit 1
+}
 cmake -S scripts/cmake/thunkgen -B build/fex/thunkgen -G Ninja -DCMAKE_BUILD_TYPE=Release \
   -DFEX_SOURCE_DIR="$PWD/$SRC" -DCMAKE_C_COMPILER=clang -DCMAKE_CXX_COMPILER=clang++ \
+  -DClang_DIR="$CLANG_CMAKE_DIR" -DLLVM_DIR="$LLVM_CMAKE_DIR" \
   >build/fex/thunkgen-cmake.log
 ninja -C build/fex/thunkgen thunkgen >build/fex/thunkgen-ninja.log 2>&1 || { tail -40 build/fex/thunkgen-ninja.log; exit 1; }
 THUNKGEN="$PWD/build/fex/thunkgen/thunkgen/thunkgen"
