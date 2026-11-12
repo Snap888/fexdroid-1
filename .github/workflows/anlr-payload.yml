@@ -45,7 +45,7 @@ jobs:
         run: |
           sudo apt-get update -qq
           docker info >/dev/null
-          sudo apt-get install -y -qq ninja-build patchelf zstd libarchive-tools             bison flex file gcc-aarch64-linux-gnu g++-aarch64-linux-gnu binutils-aarch64-linux-gnu             glslang-tools ccache >/dev/null
+          sudo apt-get install -y -qq ninja-build patchelf zstd bison flex file gcc-aarch64-linux-gnu g++-aarch64-linux-gnu binutils-aarch64-linux-gnu glslang-tools ccache >/dev/null
           sudo pip3 install --break-system-packages -q 'meson>=1.4' mako pyyaml packaging
           wget -q https://apt.llvm.org/llvm.sh
           chmod +x llvm.sh
@@ -103,7 +103,9 @@ jobs:
           name: anlr-linux-runtime-${{ github.sha }}
           path: |
             build/anlr-release/debian-arm64-rootfs.tar.gz
-            build/anlr-release/archive-metadata.json
+            build/anlr-release/debian-archive-metadata.json
+            build/anlr-release/ubuntu-arm64-rootfs.tar.gz
+            build/anlr-release/ubuntu-archive-metadata.json
             build/box64/version.txt
             build/fex/install/data/data/org.anlr.linuxruntime/files/rootfs/usr/bin/FEX
           if-no-files-found: error
