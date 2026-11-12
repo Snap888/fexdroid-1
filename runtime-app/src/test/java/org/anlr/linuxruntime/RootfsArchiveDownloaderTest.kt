@@ -4,6 +4,36 @@ import org.junit.Assert.assertThrows
 import org.junit.Test
 
 class RootfsArchiveDownloaderTest {
+    @Test fun checksumMismatchDeletesPartialSoNextAttemptCanRestart() {
+        val directory = java.nio.file.Files.createTempDirectory("anlr-download-test").toFile()
+        try {
+            val partial = java.io.File(directory, "release-corrupt.tar.gz.part")
+            val completed = java.io.File(directory, "release-corrupt.tar.gz")
+            partial.writeBytes("not-the-signed-archive".toByteArray())
+            val manifest = VerifiedRootfsManifest(
+                releaseId = "release-corrupt",
+                architecture = "aarch64",
+                runtimeAbi = "anlr-glibc-v1",
+                archiveFormat = "tar.gz",
+                downloadUrl = "https://example.invalid/rootfs.tar.gz",
+                archiveSizeBytes = partial.length(),
+                expandedSizeBytes = 1024,
+                archiveSha256 = "0".repeat(64),
+                manifestSha256 = "1".repeat(64),
+                keyId = "test-key"
+            )
+
+            assertThrows(IllegalStateException::class.java) {
+                RootfsArchiveDownloader.finalizeDownload(partial, completed, manifest)
+            }
+
+            org.junit.Assert.assertFalse("Corrupt partial must be removed", partial.exists())
+            org.junit.Assert.assertFalse("Unverified archive must not be published", completed.exists())
+        } finally {
+            directory.deleteRecursively()
+        }
+    }
+
     @Test fun acceptsExactRemainingRange() {
         RootfsArchiveDownloader.validateContentRange(
             "bytes 4096-8191/8192", 4096, 8192, 4096
