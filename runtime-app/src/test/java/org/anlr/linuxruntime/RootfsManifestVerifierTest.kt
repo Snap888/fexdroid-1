@@ -13,12 +13,14 @@ class RootfsManifestVerifierTest {
     private fun keyPair(): KeyPair =
         KeyPairGenerator.getInstance("Ed25519").generateKeyPair()
 
-    private fun manifest(architecture: String = "aarch64"): ByteArray =
+    private fun manifest(architecture: String = "aarch64", distribution: String = "Debian"): ByteArray =
         JSONObject()
             .put("schemaVersion", 1)
             .put("keyId", "anlr-test-key")
             .put("releaseId", "debian-arm64-test")
             .put("architecture", architecture)
+            .put("distribution", distribution)
+            .put("distributionVersion", if (distribution == "Ubuntu") "24.04" else "Trixie")
             .put("runtimeAbi", "anlr-glibc-v1")
             .put("archiveFormat", "tar.gz")
             .put("downloadUrl", "https://downloads.example.org/debian-rootfs.tar.gz")
@@ -45,10 +47,38 @@ class RootfsManifestVerifierTest {
         )
         assertEquals("debian-arm64-test", result.releaseId)
         assertEquals("aarch64", result.architecture)
+        assertEquals("Debian", result.distribution)
+        assertEquals("Trixie", result.distributionVersion)
         assertEquals("anlr-glibc-v1", result.runtimeAbi)
         assertEquals(1234L, result.archiveSizeBytes)
         assertEquals(8192L, result.expandedSizeBytes)
         assertEquals("a".repeat(64), result.archiveSha256)
+    }
+
+
+    @Test fun acceptsUbuntuArm64Manifest() {
+        val pair = keyPair()
+        val bytes = manifest(distribution = "Ubuntu")
+        val result = RootfsManifestVerifier.verify(
+            bytes, signed(bytes, pair),
+            Base64.getEncoder().encodeToString(pair.public.encoded),
+            "anlr-test-key", 4096, 16384
+        )
+        assertEquals("Ubuntu", result.distribution)
+        assertEquals("24.04", result.distributionVersion)
+    }
+
+    @Test fun rejectsUnknownDistribution() {
+        val pair = keyPair()
+        val bytes = JSONObject(String(manifest(), Charsets.UTF_8))
+            .put("distribution", "Alpine").toString().toByteArray()
+        assertThrows(IllegalArgumentException::class.java) {
+            RootfsManifestVerifier.verify(
+                bytes, signed(bytes, pair),
+                Base64.getEncoder().encodeToString(pair.public.encoded),
+                "anlr-test-key", 4096, 16384
+            )
+        }
     }
 
     @Test fun rejectsTamperingWrongKeyAndWrongArchitecture() {
