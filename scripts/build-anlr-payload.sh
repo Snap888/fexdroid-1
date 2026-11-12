@@ -26,6 +26,7 @@ scripts/build-rootfs.sh
 scripts/build-x86-sysroot.sh
 scripts/build-glibc.sh
 scripts/build-fex.sh
+scripts/build-box64.sh
 
 if [[ "${BUILD_MESA:-0}" == 1 ]]; then
   scripts/build-mesa.sh
@@ -39,6 +40,10 @@ fi
 # ARM64 rootfs so installation remains one atomic release.
 export WITH_APK_PARTS=0
 scripts/build-payload.sh
+
+# Box64 is an alternative AArch64-hosted x86-64 backend; ship it in the ARM64 root.
+install -D -m 0755 build/box64/install/usr/bin/box64 build/payload-stage/arm64/usr/bin/box64
+install -D -m 0644 build/box64/version.txt build/payload-stage/arm64/usr/share/anlr/box64-version
 
 A=build/payload-stage/arm64
 X=build/payload-stage/x86_64
