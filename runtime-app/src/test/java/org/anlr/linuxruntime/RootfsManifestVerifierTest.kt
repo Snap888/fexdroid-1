@@ -1,6 +1,5 @@
 package org.anlr.linuxruntime
 
-import org.bouncycastle.jce.provider.BouncyCastleProvider
 import org.json.JSONObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertThrows
@@ -12,7 +11,7 @@ import java.util.Base64
 
 class RootfsManifestVerifierTest {
     private fun keyPair(): KeyPair =
-        KeyPairGenerator.getInstance("Ed25519", BouncyCastleProvider()).generateKeyPair()
+        KeyPairGenerator.getInstance("Ed25519").generateKeyPair()
 
     private fun manifest(architecture: String = "aarch64"): ByteArray =
         JSONObject()
@@ -30,7 +29,7 @@ class RootfsManifestVerifierTest {
             .toByteArray(Charsets.UTF_8)
 
     private fun signed(bytes: ByteArray, pair: KeyPair): String {
-        val signer = Signature.getInstance("Ed25519", BouncyCastleProvider())
+        val signer = Signature.getInstance("Ed25519")
         signer.initSign(pair.private)
         signer.update(bytes)
         return Base64.getEncoder().encodeToString(signer.sign())
