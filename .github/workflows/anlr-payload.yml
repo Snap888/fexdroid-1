@@ -13,7 +13,7 @@ on:
       - '.github/workflows/anlr-payload.yml'
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: anlr-payload-${{ github.ref }}
@@ -105,6 +105,74 @@ jobs:
       - name: Assemble and QEMU smoke-test runtime
         run: |
           ANLR_PREBUILT_STAGES=1 BUILD_MESA=0 bash scripts/build-anlr-payload.sh
+
+      - name: Sign Debian and Ubuntu manifests
+        id: sign
+        env:
+          RELEASE_PRIVATE_KEY_B64: \${{ secrets.ANLR_RELEASE_PRIVATE_KEY_B64 }}
+          RELEASE_PUBLIC_KEY_B64: \${{ secrets.ANLR_RELEASE_PUBLIC_KEY_B64 }}
+          RELEASE_KEY_ID: \${{ secrets.ANLR_RELEASE_KEY_ID }}
+          RELEASE_TAG: anlr-runtime-\${{ github.sha }}
+        run: |
+          set -euo pipefail
+          if [[ -z "\${RELEASE_PRIVATE_KEY_B64:-}" || -z "\${RELEASE_PUBLIC_KEY_B64:-}" || -z "\${RELEASE_KEY_ID:-}" ]]; then
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+            echo "Release secrets incomplete; keeping build as CI-only artifact."
+            exit 0
+          fi
+          mkdir -p build/anlr-release/signed
+          printf '%s' "$RELEASE_PRIVATE_KEY_B64" | base64 -d > build/anlr-release/release-key.pem
+          openssl pkey -in build/anlr-release/release-key.pem -noout >/dev/null
+          DER_PUBLIC="$(openssl pkey -in build/anlr-release/release-key.pem -pubout -outform DER | base64 -w0)"
+          [[ "$DER_PUBLIC" == "$RELEASE_PUBLIC_KEY_B64" ]] || {
+            echo "Configured public key does not match private release key." >&2
+            exit 1
+          }
+          python3 - "$RELEASE_KEY_ID" "$RELEASE_TAG" <<'PY'
+          import json, pathlib, sys
+          key_id, tag = sys.argv[1:]
+          out = pathlib.Path("build/anlr-release")
+          for distro, version, slug in (("Debian", "Trixie", "debian"), ("Ubuntu", "24.04", "ubuntu")):
+              meta = json.loads((out / f"{slug}-archive-metadata.json").read_text())
+              manifest = {
+                  "schemaVersion": 1,
+                  "keyId": key_id,
+                  "releaseId": f"{slug}-{version.lower()}-{tag[-12:]}",
+                  "architecture": "aarch64",
+                  "distribution": distro,
+                  "distributionVersion": version,
+                  "runtimeAbi": "anlr-glibc-v1",
+                  "archiveFormat": "tar.gz",
+                  "downloadUrl": f"https://github.com/Snap888/fexdroid-1/releases/download/{tag}/{slug}-arm64-rootfs.tar.gz",
+                  "archiveSizeBytes": meta["archiveSizeBytes"],
+                  "expandedSizeBytes": meta["expandedSizeBytes"],
+                  "archiveSha256": meta["archiveSha256"]
+              }
+              (out / "signed" / f"{slug}-manifest.json").write_text(json.dumps(manifest, separators=(",", ":")) + "\n")
+          PY
+          for distro in debian ubuntu; do
+            openssl pkeyutl -sign -rawin -inkey build/anlr-release/release-key.pem \
+              -in "build/anlr-release/signed/$distro-manifest.json" \
+              -out "build/anlr-release/signed/$distro-manifest.sig.bin"
+            base64 -w0 "build/anlr-release/signed/$distro-manifest.sig.bin" > "build/anlr-release/signed/$distro-manifest.sig"
+          done
+          rm -f build/anlr-release/release-key.pem build/anlr-release/signed/*.sig.bin
+          echo "signed=true" >> "$GITHUB_OUTPUT"
+
+      - name: Publish signed Debian and Ubuntu runtime
+        if: steps.sign.outputs.signed == 'true'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: anlr-runtime-\${{ github.sha }}
+          name: ANLR Linux Runtime \${{ github.sha }}
+          make_latest: true
+          files: |
+            build/anlr-release/debian-arm64-rootfs.tar.gz
+            build/anlr-release/ubuntu-arm64-rootfs.tar.gz
+            build/anlr-release/signed/debian-manifest.json
+            build/anlr-release/signed/debian-manifest.sig
+            build/anlr-release/signed/ubuntu-manifest.json
+            build/anlr-release/signed/ubuntu-manifest.sig
 
       - uses: actions/upload-artifact@v4
         with:
