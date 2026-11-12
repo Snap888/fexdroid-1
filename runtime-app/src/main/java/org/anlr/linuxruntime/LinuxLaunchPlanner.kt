@@ -38,7 +38,14 @@ internal object LinuxLaunchPlanner {
         val binary = importedExecutable.canonicalFile
         val elf = ElfInspector.inspect(binary) ?: error("Imported file is not a supported ELF executable")
         val canonicalDependencyRoot = dependencyRootfs.canonicalFile
-        val report = ElfCompatibilityChecker.check(elf, canonicalDependencyRoot, backend, backendExecutable)
+        val selectedBackendExecutable = backendExecutable ?: when (backend) {
+            ExecutionBackend.NATIVE_ARM64 -> null
+            ExecutionBackend.FEX_X86_64 -> File(canonicalRoot, "usr/bin/FEX")
+            ExecutionBackend.BOX64_X86_64 -> File(canonicalRoot, "usr/bin/box64")
+        }
+        val report = ElfCompatibilityChecker.check(
+            elf, canonicalDependencyRoot, backend, selectedBackendExecutable
+        )
         check(report.compatible) { report.reasons.joinToString("; ") }
 
         val executable: File
@@ -72,7 +79,7 @@ internal object LinuxLaunchPlanner {
                 }
             }
             ExecutionBackend.FEX_X86_64, ExecutionBackend.BOX64_X86_64 -> {
-                executable = backendExecutable!!.canonicalFile
+                executable = requireNotNull(selectedBackendExecutable).canonicalFile
                 val backendElf = ElfInspector.inspect(executable)
                     ?: error("Translation backend is not a valid ELF executable")
                 val backendReport = ElfCompatibilityChecker.check(
