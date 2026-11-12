@@ -13,6 +13,8 @@ class RootfsArchiveDownloaderTest {
             val manifest = VerifiedRootfsManifest(
                 releaseId = "release-corrupt",
                 architecture = "aarch64",
+                distribution = "Debian",
+                distributionVersion = "Trixie",
                 runtimeAbi = "anlr-glibc-v1",
                 archiveFormat = "tar.gz",
                 downloadUrl = "https://example.invalid/rootfs.tar.gz",
