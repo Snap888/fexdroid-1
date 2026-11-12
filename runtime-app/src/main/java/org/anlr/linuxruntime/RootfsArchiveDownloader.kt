@@ -46,7 +46,7 @@ internal object RootfsArchiveDownloader {
                     manifest.archiveSizeBytes
                 )
             }.onSuccess { return completed }
-            completed.delete()
+            check(completed.delete()) { "Cannot discard invalid completed rootfs archive" }
         }
 
         var offset = partial.length()
@@ -131,10 +131,21 @@ internal object RootfsArchiveDownloader {
         completed: File,
         manifest: VerifiedRootfsManifest
     ): File {
-        RootfsPayloadVerifier.verifyArchive(
-            partial, manifest.archiveSizeBytes, manifest.archiveSha256,
-            manifest.archiveSizeBytes
-        )
+        try {
+            RootfsPayloadVerifier.verifyArchive(
+                partial, manifest.archiveSizeBytes, manifest.archiveSha256,
+                manifest.archiveSizeBytes
+            )
+        } catch (error: Exception) {
+            // A full-length but corrupt .part would otherwise be retried forever:
+            // the next invocation sees offset == archiveSizeBytes and verifies it
+            // again without making a network request. Discard only the untrusted
+            // partial; the next install attempt starts a clean download.
+            check(Files.deleteIfExists(partial.toPath())) {
+                "Rootfs archive checksum failed and corrupt partial could not be removed"
+            }
+            throw error
+        }
         try {
             Files.move(
                 partial.toPath(), completed.toPath(),
