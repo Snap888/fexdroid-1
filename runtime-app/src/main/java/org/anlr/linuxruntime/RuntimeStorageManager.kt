@@ -106,14 +106,13 @@ internal class RuntimeStorageManager(filesDir: File) {
         val released = child(releases, releaseId)
         val stagedMarker = File(staged, COMPLETE_MARKER)
         val releasedMarker = File(released, COMPLETE_MARKER)
-        // Fail before publishing or switching the authoritative pointer if a legacy
-        // filesDir/rootfs path cannot safely become our stable symlink.
-        prepareActiveRootLink()
         val alreadyPublished = released.isDirectory && releasedMarker.isFile && !staged.exists()
         val marker = if (alreadyPublished) releasedMarker else stagedMarker
         check(marker.isFile) { "Release is incomplete" }
         val recorded = marker.readText().trim()
         check(recorded.equals(expectedManifestSha256, ignoreCase = true)) { "Manifest checksum mismatch" }
+        // Preflight only after validating the release marker, but before publishing it.
+        prepareActiveRootLink()
         val movedNow = !alreadyPublished
         if (movedNow) {
             check(staged.isDirectory && !released.exists()) { "Release ID is already installed" }
