@@ -60,8 +60,8 @@ internal object LinuxGuestSession {
                     digestEngine.update(buffer, 0, count)
                 }
             }
-            val digest = digestEngine.digest().take(8)
-                .joinToString("") { "%02x".format(it.toInt() and 0xff) }
+            val digestBytes = digestEngine.digest()
+            val digest = digestBytes.joinToString("") { "%02x".format(it.toInt() and 0xff) }
             val safeName = executable.name.replace(Regex("[^A-Za-z0-9._+-]"), "_").take(96)
                 .ifBlank { "application" }
             val appDirectory = File(selectedRoot, "tmp/anlr-imports").apply {
@@ -71,8 +71,31 @@ internal object LinuxGuestSession {
                 "Guest application staging path escapes x86-64 rootfs"
             }
             val target = File(appDirectory, "$digest-$safeName")
-            if (!target.isFile || target.length() != executable.length()) {
-                executable.copyTo(target, overwrite = true)
+            fun sha256(file: File): ByteArray {
+                val engine = MessageDigest.getInstance("SHA-256")
+                file.inputStream().use { input ->
+                    val buffer = ByteArray(64 * 1024)
+                    while (true) {
+                        val count = input.read(buffer)
+                        if (count < 0) break
+                        engine.update(buffer, 0, count)
+                    }
+                }
+                return engine.digest()
+            }
+            val validExisting = target.isFile && target.length() == executable.length() &&
+                runCatching { MessageDigest.isEqual(sha256(target), digestBytes) }.getOrDefault(false)
+            if (!validExisting) {
+                val temporary = File(appDirectory, ".$digest-$safeName.part")
+                try {
+                    executable.copyTo(temporary, overwrite = true)
+                    check(MessageDigest.isEqual(sha256(temporary), digestBytes)) {
+                        "Staged Linux application failed SHA-256 verification"
+                    }
+                    check(temporary.renameTo(target)) { "Cannot atomically publish staged Linux application" }
+                } finally {
+                    temporary.delete()
+                }
             }
             check(target.setExecutable(true, false) || target.canExecute()) {
                 "Cannot set executable permission on staged Linux application"
