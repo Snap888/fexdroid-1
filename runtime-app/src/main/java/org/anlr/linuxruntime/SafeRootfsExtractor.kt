@@ -130,6 +130,12 @@ internal object SafeRootfsExtractor {
         require(rawName.isNotBlank() && !rawName.startsWith("/") && !rawName.contains('\\')) {
             "Absolute or invalid rootfs path rejected"
         }
+        // Check original components before normalization. Normalizing first
+        // silently accepts aliases such as usr/../etc/passwd, complicating
+        // duplicate-path checks. A leading ./ remains valid for GNU tar.
+        require(rawName.split('/').none { it == ".." }) {
+            "Rootfs archive path traversal rejected"
+        }
         val relative = Paths.get(rawName).normalize()
         require(!relative.isAbsolute && relative.toString().isNotEmpty() && relative.none { it.toString() == ".." }) {
             "Rootfs archive path traversal rejected"
