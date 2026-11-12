@@ -147,7 +147,7 @@ jobs:
           rm -f build/anlr-release/release-key.pem build/anlr-release/signed/*.sig.bin
 
       - name: Publish signed runtime release
-        if: ${{ secrets.ANLR_RELEASE_PRIVATE_KEY_B64 != '' && secrets.ANLR_RELEASE_KEY_ID != '' }}
+        if: steps.sign.outputs.signed == 'true'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: anlr-runtime-${{ github.sha }}
