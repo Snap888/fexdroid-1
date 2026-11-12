@@ -26,7 +26,6 @@ jobs:
     env:
       FEXROOT_PATH: /data/data/org.anlr.linuxruntime/files/rootfs
       BOX64_TAG: v0.4.4
-      ANLR_SIGNING_CONFIGURED: ${{ secrets.ANLR_RELEASE_PRIVATE_KEY_B64 != '' && secrets.ANLR_RELEASE_KEY_ID != '' }}
       CCACHE_DIR: ${{ github.workspace }}/.ccache
     steps:
       - uses: actions/checkout@v4
@@ -101,13 +100,19 @@ jobs:
           ANLR_PREBUILT_STAGES=1 BUILD_MESA=0 bash scripts/build-anlr-payload.sh
 
       - name: Create signed release manifests
-        if: env.ANLR_SIGNING_CONFIGURED == 'true'
+        id: sign
         env:
           RELEASE_PRIVATE_KEY_B64: ${{ secrets.ANLR_RELEASE_PRIVATE_KEY_B64 }}
           RELEASE_KEY_ID: ${{ secrets.ANLR_RELEASE_KEY_ID }}
           RELEASE_TAG: anlr-runtime-${{ github.sha }}
         run: |
           set -euo pipefail
+          if [[ -z "${RELEASE_PRIVATE_KEY_B64:-}" || -z "${RELEASE_KEY_ID:-}" ]]; then
+            echo "signed=false" >> "$GITHUB_OUTPUT"
+            echo "Release signing secrets are not configured; archives will remain CI-only artifacts."
+            exit 0
+          fi
+          echo "signed=true" >> "$GITHUB_OUTPUT"
           mkdir -p build/anlr-release/signed
           printf '%s' "$RELEASE_PRIVATE_KEY_B64" | base64 -d > build/anlr-release/release-key.pem
           openssl pkey -in build/anlr-release/release-key.pem -noout >/dev/null
