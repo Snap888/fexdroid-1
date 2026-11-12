@@ -10,7 +10,7 @@ internal object LinuxGuestSession {
         backendExecutable: File? = null,
         rows: Int = 24,
         columns: Int = 80,
-        guestRootfs: File = rootfs
+        guestRootfs: File = if (backend == ExecutionBackend.FEX_X86_64) File(rootfs, "usr/share/anlr/x86_64") else rootfs
     ): NativePty {
         val shell = File(guestRootfs, "bin/sh").canonicalFile
         check(shell.isFile) { "Debian shell /bin/sh is missing" }
