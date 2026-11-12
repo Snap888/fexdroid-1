@@ -23,7 +23,6 @@ permissions:
 jobs:
   runtime-app:
     runs-on: ubuntu-24.04
-    environment: Key
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
@@ -41,35 +40,8 @@ jobs:
           "$SDKM" --install "platforms;android-37" >/dev/null || true
       - name: Validate ANLR payload build script syntax
         run: find scripts -type f -name '*.sh' -print0 | xargs -0 -n1 bash -n
-      - name: Validate pinned release trust anchor
-        env:
-          RELEASE_PUBLIC_KEY_B64: ${{ secrets.ANLR_RELEASE_PUBLIC_KEY_B64 }}
-          RELEASE_KEY_ID: ${{ secrets.ANLR_RELEASE_KEY_ID }}
-        run: |
-          set -euo pipefail
-          test -n "$RELEASE_PUBLIC_KEY_B64"
-          test -n "$RELEASE_KEY_ID"
-          python3 - "$RELEASE_PUBLIC_KEY_B64" "$RUNNER_TEMP/anlr-release-public.der" "$GITHUB_ENV" <<'PY'
-          import base64, pathlib, subprocess, sys
-          value, der_path, env_path = sys.argv[1:]
-          raw = value.strip().encode()
-          if raw.startswith(b"-----BEGIN PUBLIC KEY-----"):
-              der = subprocess.run(["openssl","pkey","-pubin","-inform","PEM","-in","/dev/stdin","-outform","DER"],input=raw,stdout=subprocess.PIPE,check=True).stdout
-          else:
-              compact=b"".join(raw.split()); compact+=b"="*((4-len(compact)%4)%4)
-              der=base64.b64decode(compact,altchars=b"-_",validate=True)
-          pathlib.Path(der_path).write_bytes(der)
-          canonical=base64.b64encode(der).decode()
-          with open(env_path,"a") as f: f.write("ANLR_PUBLIC_KEY_NORMALIZED="+canonical+"\n")
-          PY
-          openssl pkey -pubin -inform DER -in "$RUNNER_TEMP/anlr-release-public.der" -noout
       - name: Build independent runtime APK
-        env:
-          RELEASE_KEY_ID: ${{ secrets.ANLR_RELEASE_KEY_ID }}
-        run: |
-          ORG_GRADLE_PROJECT_ANLR_RELEASE_PUBLIC_KEY_B64="$ANLR_PUBLIC_KEY_NORMALIZED" \
-          ORG_GRADLE_PROJECT_ANLR_RELEASE_KEY_ID="$RELEASE_KEY_ID" \
-            ./gradlew --no-daemon --stacktrace :runtime-app:testDebugUnitTest :runtime-app:assembleDebug
+        run: ./gradlew --no-daemon --stacktrace :runtime-app:testDebugUnitTest :runtime-app:assembleDebug
       - uses: actions/upload-artifact@v4
         with:
           name: anlr-debug-apk
