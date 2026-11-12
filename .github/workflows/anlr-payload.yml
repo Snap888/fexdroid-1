@@ -1,0 +1,106 @@
+name: ANLR Linux runtime payload
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [anlr/separate-linux-runtime]
+    paths:
+      - 'scripts/**'
+      - 'patches/**'
+      - 'third_party/**'
+      - 'tools/**'
+      - 'tests/**'
+      - '.github/workflows/anlr-payload.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: anlr-payload-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  build-runtime:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 300
+    env:
+      FEXROOT_PATH: /data/data/org.anlr.linuxruntime/files/rootfs
+      BOX64_TAG: v0.4.4
+      CCACHE_DIR: ${{ github.workspace }}/.ccache
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /opt/ghc /usr/local/.ghcup /opt/hostedtoolcache/CodeQL /usr/share/swift
+          df -h /
+
+      - uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+
+      - name: Host build dependencies
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq docker.io ninja-build patchelf zstd libarchive-tools             bison flex file gcc-aarch64-linux-gnu g++-aarch64-linux-gnu binutils-aarch64-linux-gnu             glslang-tools ccache >/dev/null
+          sudo pip3 install --break-system-packages -q 'meson>=1.4' mako pyyaml packaging
+          wget -q https://apt.llvm.org/llvm.sh
+          chmod +x llvm.sh
+          sudo ./llvm.sh 22 >/dev/null
+          sudo apt-get install -y -qq libclang-cpp22-dev libclang-22-dev llvm-22-dev lld-22 >/dev/null
+          for f in /usr/lib/llvm-22/bin/*; do sudo ln -sf "$f" /usr/local/bin/$(basename "$f"); done
+          clang --version | head -1
+          cmake --version | head -1
+          ninja --version
+
+      - uses: actions/cache@v4
+        with:
+          path: .ccache
+          key: anlr-ccache-${{ runner.os }}-${{ github.sha }}
+          restore-keys: anlr-ccache-${{ runner.os }}-
+
+      - name: Cache Debian rootfs and sysroots
+        id: rootfs
+        uses: actions/cache@v4
+        with:
+          path: build/rootfs
+          key: anlr-rootfs-v1-${{ hashFiles('scripts/build-rootfs.sh', 'scripts/build-x86-sysroot.sh', 'scripts/config.sh') }}
+
+      - name: Cache patched glibc
+        id: glibc
+        uses: actions/cache@v4
+        with:
+          path: build/glibc/install
+          key: anlr-glibc-v1-${{ hashFiles('scripts/build-glibc.sh', 'scripts/config.sh', 'patches/glibc/**', 'scripts/lib/make-glibc*', 'scripts/lib/gen-android-seccomp.py', 'third_party/aosp-bionic-seccomp/**', 'tools/fxshmd/*.h') }}
+
+      - name: Build ARM64 and x86-64 rootfs/sysroots
+        if: steps.rootfs.outputs.cache-hit != 'true'
+        run: scripts/build-rootfs.sh && scripts/build-x86-sysroot.sh
+
+      - name: Build ANLR patched glibc
+        if: steps.glibc.outputs.cache-hit != 'true'
+        run: scripts/build-glibc.sh 2>&1 | tail -50
+
+      - name: Build FEX and thunks
+        run: scripts/build-fex.sh 2>&1 | tail -60
+
+      - name: Build Box64 ARM64 dynarec backend
+        run: scripts/build-box64.sh 2>&1 | tail -60
+
+      - name: Assemble and QEMU smoke-test runtime
+        run: |
+          BUILD_MESA=0 scripts/build-anlr-payload.sh
+          scripts/test-payload-qemu.sh 'echo ANLR_QEMU_BEGIN; /usr/bin/id; /usr/bin/FEX --version; /usr/bin/box64 --version; echo ANLR_QEMU_END'
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: anlr-linux-runtime-${{ github.sha }}
+          path: |
+            build/anlr-release/debian-arm64-rootfs.tar.gz
+            build/anlr-release/archive-metadata.json
+            build/box64/version.txt
+            build/fex/install/data/data/org.anlr.linuxruntime/files/rootfs/usr/bin/FEX
+          if-no-files-found: error
+          compression-level: 0
