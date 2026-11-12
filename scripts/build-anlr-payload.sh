@@ -43,66 +43,66 @@ else
   export WITH_MESA=0
 fi
 
-# The independent runtime consumes one signed tar.gz archive; it does not need
-# the legacy APK's libfxprobe JNI helper. The guest rootfs is nested inside the
-# ARM64 rootfs so installation remains one atomic release.
+# Produce two independent, reproducible distributions. Both use the same
+# ANLR-patched glibc ABI and FEX/Box64 host backends, but retain their own
+# package database and userspace files. Never overwrite Debian with Ubuntu.
 export WITH_APK_PARTS=0
-scripts/build-payload.sh
+mkdir -p build/anlr-release
 
-# Box64 is an alternative AArch64-hosted x86-64 backend; ship it in the ARM64 root.
-install -D -m 0755 build/box64/install/usr/bin/box64 build/payload-stage/arm64/usr/bin/box64
-install -D -m 0644 build/box64/version.txt build/payload-stage/arm64/usr/share/anlr/box64-version
+build_variant() {
+  local distro="$1" version="$2" rootfs_archive="$3"
+  local out="build/anlr-${distro,,}-payload"
+  local stage="build/anlr-${distro,,}-stage"
+  local archive="build/anlr-release/${distro,,}-arm64-rootfs.tar.gz"
+  local metadata="build/anlr-release/${distro,,}-archive-metadata.json"
 
-A=build/payload-stage/arm64
-X=build/payload-stage/x86_64
-ANLR_GUEST="$A/usr/share/anlr/x86_64"
-mkdir -p "$(dirname "$ANLR_GUEST")"
-rm -rf "$ANLR_GUEST"
-cp -a "$X" "$ANLR_GUEST"
+  echo "== Assemble $distro $version runtime =="
+  ANLR_PAYLOAD_OUT="$out" ANLR_STAGE_DIR="$stage" \
+    ANLR_ARM64_ROOTFS_ARCHIVE="$rootfs_archive" scripts/build-payload.sh
 
-# Point FEX at the nested guest rootfs instead of the legacy sibling directory.
-python3 - "$A/usr/share/fex-emu/Config.json" "$FEXROOT_PATH/usr/share/anlr/x86_64" <<'PY'
+  local a="$stage/arm64" x="$stage/x86_64"
+  install -D -m 0755 build/box64/install/usr/bin/box64 "$a/usr/bin/box64"
+  install -D -m 0644 build/box64/version.txt "$a/usr/share/anlr/box64-version"
+  mkdir -p "$a/usr/share/anlr"
+  rm -rf "$a/usr/share/anlr/x86_64"
+  cp -a "$x" "$a/usr/share/anlr/x86_64"
+
+  python3 - "$a/usr/share/fex-emu/Config.json" "$FEXROOT_PATH/usr/share/anlr/x86_64" <<'PY'
 import json, pathlib, sys
 p = pathlib.Path(sys.argv[1])
 cfg = json.loads(p.read_text())
 cfg.setdefault("Config", {})["RootFS"] = str(pathlib.Path(sys.argv[2]).resolve())
-p.write_text(json.dumps(cfg, indent=2) + "\n")
+p.write_text(json.dumps(cfg, indent=2) + "\\n")
 PY
 
-# The archive format and metadata match RootfsManifestVerifier/SafeRootfsExtractor.
-mkdir -p build/anlr-release
-ARCHIVE=build/anlr-release/debian-arm64-rootfs.tar.gz
-tar -C "$A" --numeric-owner --owner=0 --group=0 --sort=name --mtime='@0' --hard-dereference -cf - . | gzip -n -9 > "$ARCHIVE"
-python3 - "$A" "$ARCHIVE" > build/anlr-release/archive-metadata.json <<'PY'
+  tar -C "$a" --numeric-owner --owner=0 --group=0 --sort=name --mtime='@0' \
+    --hard-dereference -cf - . | gzip -n -9 > "$archive"
+  python3 - "$a" "$archive" "$distro" "$version" > "$metadata" <<'PY'
 import hashlib, json, os, pathlib, sys
 root, archive = pathlib.Path(sys.argv[1]), pathlib.Path(sys.argv[2])
-expanded = 0
-for base, dirs, files in os.walk(root, followlinks=False):
-    for name in files:
-        p = pathlib.Path(base) / name
-        if not p.is_symlink() and p.is_file(): expanded += p.stat().st_size
+expanded = sum(p.stat().st_size for p in root.rglob("*") if p.is_file() and not p.is_symlink())
 h = hashlib.sha256()
-with archive.open('rb') as f:
-    for block in iter(lambda: f.read(1024 * 1024), b''): h.update(block)
-box64_version = pathlib.Path("build/box64/version.txt").read_text().strip()
-print(json.dumps({"architecture":"aarch64", "archiveFormat":"tar.gz",
-                  "distribution":"Ubuntu", "distributionVersion":"24.04",
-                  "archiveSizeBytes":archive.stat().st_size,
-                  "expandedSizeBytes":expanded, "archiveSha256":h.hexdigest(),
-                  "runtimeAbi":"anlr-glibc-v1",
-                  "runtimeRoot":(root / 'usr/lib/anlr/runtime-root').read_text().strip(),
-                  "backends":{"fex":os.environ.get("FEX_TAG", "FEX-2609"),
-                              "box64":box64_version}},
-                 indent=2) + "\n")
+with archive.open("rb") as f:
+    for block in iter(lambda: f.read(1024 * 1024), b""): h.update(block)
+print(json.dumps({
+  "architecture": "aarch64", "archiveFormat": "tar.gz",
+  "distribution": sys.argv[3], "distributionVersion": sys.argv[4],
+  "archiveSizeBytes": archive.stat().st_size, "expandedSizeBytes": expanded,
+  "archiveSha256": h.hexdigest(), "runtimeAbi": "anlr-glibc-v1",
+  "runtimeRoot": (root / "usr/lib/anlr/runtime-root").read_text().strip(),
+  "backends": {"fex": os.environ.get("FEX_TAG", "FEX-2609"),
+               "box64": pathlib.Path("build/box64/version.txt").read_text().strip()}
+}, indent=2) + "\\n")
 PY
 
-# QEMU smoke test the ARM64 shell and verify the FEX executable is present.
-scripts/test-payload-qemu.sh 'echo ANLR_ROOTFS_SMOKE_BEGIN; /usr/bin/id; /bin/sh -c "echo ANLR_GUEST_EXEC_OK"; test -x /usr/bin/FEX; echo ANLR_ROOTFS_SMOKE_END'
-scripts/test-payload-qemu.sh '/usr/bin/box64 --version'
+  ANLR_STAGE_DIR="$stage" scripts/test-payload-qemu.sh \
+    'echo ANLR_ROOTFS_SMOKE_BEGIN; /usr/bin/id; /bin/sh -c "echo ANLR_GUEST_EXEC_OK"; test -x /usr/bin/FEX; /usr/bin/box64 --version; echo ANLR_ROOTFS_SMOKE_END'
+  echo "Built $distro $version: $archive"
+}
+
+build_variant Debian Trixie build/rootfs/rootfs-arm64.tar
+build_variant Ubuntu 24.04 build/rootfs/ubuntu-arm64.tar
 
 echo
-echo "ANLR rootfs archive built: $ARCHIVE"
-echo "Archive metadata: build/anlr-release/archive-metadata.json"
-echo "Embedded runtime root: $(cat "$A/usr/lib/anlr/runtime-root")"
-echo
-echo "The metadata is unsigned. Do NOT ship until the exact manifest is signed with the offline release key and its public key is pinned in the ANLR app."
+echo "Both distribution archives are in build/anlr-release/."
+echo "Metadata is unsigned. Do NOT ship until each exact manifest is signed with the offline release key and its public key is pinned in the ANLR app."
