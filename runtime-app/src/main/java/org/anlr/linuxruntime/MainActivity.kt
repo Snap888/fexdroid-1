@@ -339,6 +339,48 @@ private fun RuntimeManagerScreen(context: Context, onNotice: (String) -> Unit) {
     var progressLabel by remember { mutableStateOf("") }
     var status by remember { mutableStateOf("Проверка установленной системы…") }
     val scope = rememberCoroutineScope()
+    val localArchivePicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
+        if (uri != null && !installing) {
+            installing = true
+            progress = 0f
+            progressLabel = "Копирование архива из хранилища…"
+            scope.launch {
+                val result = withContext(Dispatchers.IO) {
+                    runCatching {
+                        val storage = RuntimeStorageManager(context.filesDir)
+                        val importFile = File(storage.downloadsDirectory(), "selected-rootfs-${UUID.randomUUID()}.tar.gz")
+                        context.contentResolver.openInputStream(uri)?.use { input ->
+                            importFile.outputStream().use { output -> input.copyTo(output) }
+                        } ?: error("Не удалось открыть выбранный архив")
+                        try {
+                            RootfsInstaller.installLocalArchive(
+                                archive = importFile,
+                                distribution = selected,
+                                filesDir = context.filesDir,
+                                maxArchiveSizeBytes = 8L * 1024L * 1024L * 1024L,
+                                maxExtractedBytes = 24L * 1024L * 1024L * 1024L
+                            )
+                        } finally {
+                            importFile.delete()
+                        }
+                    }
+                }
+                result.onSuccess { installed ->
+                    activeId = installed.releaseId
+                    activeDistro = selected
+                    status = "Активна: $selected · ${installed.releaseId} (локальный архив)"
+                    progress = 1f
+                    progressLabel = "Локальная установка завершена"
+                    onNotice("$selected установлена из хранилища. SHA-256 вычислен локально; автор архива криптографически не подтверждён.")
+                }.onFailure { error ->
+                    status = "Локальная установка не выполнена: ${error.message}"
+                    progressLabel = ""
+                    onNotice("Не удалось установить архив: ${error.message}")
+                }
+                installing = false
+            }
+        }
+    }
 
     LaunchedEffect(Unit) {
         val result = withContext(Dispatchers.IO) {
@@ -442,11 +484,21 @@ private fun RuntimeManagerScreen(context: Context, onNotice: (String) -> Unit) {
                 }
             }
         }
+        OutlinedButton(
+            onClick = { localArchivePicker.launch(arrayOf("application/gzip", "application/x-gzip", "application/octet-stream", "*/*")) },
+            enabled = !installing,
+            modifier = Modifier.fillMaxWidth()
+        ) { Text("Установить архив из памяти устройства (.tar.gz)") }
+        Text(
+            "Резервная установка: выберите ранее скачанный Debian/Ubuntu ARM64 rootfs .tar.gz. Архив распаковывается в staging, проверяются shell, patched glibc ABI и соответствие дистрибутива; затем система атомарно активируется. SHA-256 вычисляется локально и не подтверждает издателя.",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
         if (installing || progressLabel.isNotBlank()) {
             LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth())
             Text(progressLabel, style = MaterialTheme.typography.bodySmall)
         }
-        Text("Установка выполняется в приватное хранилище APK. Архив проверяется по SHA-256, манифест — Ed25519. Для загрузки необходим опубликованный подписанный релиз и публичный ключ, закреплённый при сборке APK.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("Сетевая установка подписанных релизов доступна только в APK с настроенным доверенным ключом. Для тестирования без ключей используйте установку из памяти устройства.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 
