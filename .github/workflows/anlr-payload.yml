@@ -127,7 +127,7 @@ jobs:
           value, output = sys.argv[1:]
           raw = value.strip().encode()
           if raw.startswith(b"-----BEGIN "):
-              decoded = raw + (b"\\n" if not raw.endswith(b"\\n") else b"")
+              decoded = raw + (b"\n" if not raw.endswith(b"\n") else b"")
           else:
               compact = b"".join(raw.split())
               compact += b"=" * ((4 - len(compact) % 4) % 4)
