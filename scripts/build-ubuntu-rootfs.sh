@@ -48,8 +48,8 @@ mv "$OUT/ubuntu-arm64-stage/packages.txt" "$OUT/ubuntu-arm64.packages.txt"
   find usr/share/locale -mindepth 1 -maxdepth 1 ! -name locale.alias -exec rm -rf {} + 2>/dev/null || true
 )
 tar -C "$OUT/ubuntu-arm64-stage" --numeric-owner --owner=0 --group=0 --sort=name --mtime='@0' \
-  --hard-dereference -cf "$OUT/rootfs-arm64.tar" .
+  --hard-dereference -cf "$OUT/ubuntu-arm64.tar" .
 rm -rf "$OUT/ubuntu-arm64-stage"
-cp "$OUT/ubuntu-arm64.packages.txt" "$OUT/rootfs-arm64.packages.txt"
-echo "Ubuntu runtime rootfs: $OUT/rootfs-arm64.tar"
-du -h "$OUT/rootfs-arm64.tar"
+cp "$OUT/ubuntu-arm64.packages.txt" "$OUT/ubuntu-arm64.packages.txt"
+echo "Ubuntu runtime rootfs: $OUT/ubuntu-arm64.tar"
+du -h "$OUT/ubuntu-arm64.tar"
