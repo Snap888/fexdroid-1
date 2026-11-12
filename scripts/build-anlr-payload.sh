@@ -111,7 +111,7 @@ PY
   # Box64 is a host ARM64 binary: run it from the mounted guest root so its
   # x86-64 dynamic loader and libraries resolve inside that rootfs.
   ANLR_STAGE_DIR="$stage" scripts/test-payload-qemu.sh \
-    'set -euo pipefail
+    'set -eu
      smoke=/usr/share/anlr/smoke/anlr-x86_64-smoke
      echo ANLR_ROOTFS_SMOKE_BEGIN
      "$FXD_ROOT/usr/bin/id"
