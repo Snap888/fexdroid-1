@@ -22,14 +22,21 @@ echo "== ANLR payload build =="
 echo "Compiled guest root: $FEXROOT_PATH"
 echo "Build dependencies and payload under this same path."
 
-scripts/build-rootfs.sh
-scripts/build-x86-sysroot.sh
-scripts/build-glibc.sh
-scripts/build-fex.sh
-scripts/build-box64.sh
+# CI can build/cache the expensive toolchain stages independently, then set
+# ANLR_PREBUILT_STAGES=1 to assemble and test without rebuilding them.
+if [[ "${ANLR_PREBUILT_STAGES:-0}" != 1 ]]; then
+  scripts/build-rootfs.sh
+  scripts/build-x86-sysroot.sh
+  scripts/build-glibc.sh
+  scripts/build-fex.sh
+  scripts/build-box64.sh
+
+  if [[ "${BUILD_MESA:-0}" == 1 ]]; then
+    scripts/build-mesa.sh
+  fi
+fi
 
 if [[ "${BUILD_MESA:-0}" == 1 ]]; then
-  scripts/build-mesa.sh
   export WITH_MESA=1
 else
   export WITH_MESA=0
