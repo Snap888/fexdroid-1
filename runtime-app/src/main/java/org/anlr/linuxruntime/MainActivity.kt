@@ -62,6 +62,8 @@ private data class ImportedApp(
     val interpreter: String = "", val neededLibraries: List<String> = emptyList()
 )
 
+private data class AppLaunchRequest(val app: ImportedApp, val backend: ExecutionBackend)
+
 private fun deviceSummary(): List<Pair<String, String>> {
     val page = runCatching { Os.sysconf(OsConstants._SC_PAGESIZE).toString() }.getOrDefault("unknown")
     val kgsl = File("/dev/kgsl-3d0").exists()
@@ -85,6 +87,8 @@ private fun AnlrApp() {
     var selectedTab by remember { mutableIntStateOf(0) }
     var apps by remember { mutableStateOf(emptyList<ImportedApp>()) }
     var notice by remember { mutableStateOf<String?>(null) }
+    var launchRequest by remember { mutableStateOf<AppLaunchRequest?>(null) }
+    var backendChoiceApp by remember { mutableStateOf<ImportedApp?>(null) }
     val context = androidx.compose.ui.platform.LocalContext.current
     val prefs = remember { context.getSharedPreferences("anlr_apps", 0) }
     val scope = rememberCoroutineScope()
@@ -192,15 +196,44 @@ private fun AnlrApp() {
             }
             when (selectedTab) {
                 0 -> HomeScreen(onApps = { selectedTab = 1 }, onTerminal = { selectedTab = 2 }, onDesktop = { selectedTab = 3 }, onRuntime = { selectedTab = 4 })
-                1 -> AppsScreen(apps, onImport = { picker.launch(arrayOf("*/*")) }, onLaunch = { notice = "Runtime ещё не установлен. Импорт приложения сохранён; запуск будет доступен после установки FEX/Box64 и rootfs." }, onRemove = { id ->
+                1 -> AppsScreen(apps, onImport = { picker.launch(arrayOf("*/*")) }, onLaunch = { app ->
+                    val elf = app.localPath.takeIf { it.isNotBlank() }?.let { runCatching { ElfInspector.inspect(File(it)) }.getOrNull() }
+                    when (elf?.machine) {
+                        183 -> { launchRequest = AppLaunchRequest(app, ExecutionBackend.NATIVE_ARM64); selectedTab = 2 }
+                        62 -> backendChoiceApp = app
+                        else -> notice = "Неподдерживаемый формат или архитектура приложения. Поддерживаются ELF AArch64 и x86-64."
+                    }
+                }, onRemove = { id ->
                     apps.firstOrNull { it.id == id }?.localPath?.let { AppFileImporter.deleteManagedCopy(context.filesDir, it) }
                     persist(apps.filterNot { it.id == id })
                 })
-                2 -> TerminalScreen(context)
+                2 -> TerminalScreen(context, launchRequest, onLaunchConsumed = { launchRequest = null })
                 3 -> DesktopScreen()
                 else -> RuntimeManagerScreen(context) { notice = it }
             }
         }
+    }
+    backendChoiceApp?.let { app ->
+        AlertDialog(
+            onDismissRequest = { backendChoiceApp = null },
+            title = { Text("Выбор x86-64 backend") },
+            text = { Text("Для ${app.name} можно использовать FEX или Box64. FEX выбран по умолчанию для совместимости.") },
+            confirmButton = {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TextButton(onClick = {
+                        launchRequest = AppLaunchRequest(app, ExecutionBackend.FEX_X86_64)
+                        backendChoiceApp = null
+                        selectedTab = 2
+                    }) { Text("FEX") }
+                    TextButton(onClick = {
+                        launchRequest = AppLaunchRequest(app, ExecutionBackend.BOX64_X86_64)
+                        backendChoiceApp = null
+                        selectedTab = 2
+                    }) { Text("Box64") }
+                }
+            },
+            dismissButton = { TextButton(onClick = { backendChoiceApp = null }) { Text("Отмена") } }
+        )
     }
     notice?.let { message ->
         AlertDialog(onDismissRequest = { notice = null }, confirmButton = { TextButton(onClick = { notice = null }) { Text("OK") } }, title = { Text("ANLR") }, text = { Text(message) })
@@ -503,7 +536,11 @@ private fun RuntimeManagerScreen(context: Context, onNotice: (String) -> Unit) {
 }
 
 @Composable
-private fun TerminalScreen(context: Context) {
+private fun TerminalScreen(
+    context: Context,
+    launchRequest: AppLaunchRequest? = null,
+    onLaunchConsumed: () -> Unit = {}
+) {
     var command by remember { mutableStateOf("") }
     var output by remember { mutableStateOf("ANLR Terminal · POSIX PTY\nВыберите Android host или установленный Linux guest.\n") }
     var busy by remember { mutableStateOf(false) }
@@ -529,6 +566,36 @@ private fun TerminalScreen(context: Context) {
         runCatching { active?.close() }
     }
 
+    fun attachSession(session: NativePty, banner: String) {
+        pty = session
+        append(banner)
+        ptyReader = scope.launch(Dispatchers.IO) {
+            val buffer = ByteArray(4096)
+            val decoder = Utf8StreamDecoder()
+            try {
+                while (isActive) {
+                    val count = session.read(buffer)
+                    if (count <= 0) {
+                        val tail = decoder.decode(buffer, 0, 0, endOfInput = true)
+                        if (tail.isNotEmpty()) withContext(Dispatchers.Main) { append(tail) }
+                        break
+                    }
+                    val chunk = decoder.decode(buffer, 0, count)
+                    if (chunk.isNotEmpty()) withContext(Dispatchers.Main) { append(chunk) }
+                }
+            } catch (_: Exception) {
+            } finally {
+                runCatching { session.close() }
+                withContext(Dispatchers.Main) {
+                    if (pty === session) {
+                        pty = null
+                        append("\n[PTY process ended]\n")
+                    }
+                }
+            }
+        }
+    }
+
     fun startPty(guest: Boolean = false) {
         if (pty != null || busy) return
         val session = runCatching {
@@ -545,35 +612,7 @@ private fun TerminalScreen(context: Context) {
             append("\n[PTY start failed: ${it.message}]\n")
             return
         }
-        pty = session
-        append(if (guest) "\n[Debian ARM64 guest PTY started]\n" else "\n[Android host PTY started; not a Debian guest shell]\n")
-        ptyReader = scope.launch(Dispatchers.IO) {
-            val buffer = ByteArray(4096)
-            val decoder = Utf8StreamDecoder()
-            try {
-                while (isActive) {
-                    val count = session.read(buffer)
-                    if (count <= 0) {
-                        val tail = decoder.decode(buffer, 0, 0, endOfInput = true)
-                        if (tail.isNotEmpty()) withContext(Dispatchers.Main) { append(tail) }
-                        break
-                    }
-                    // Preserve partial multibyte characters across native PTY reads.
-                    val chunk = decoder.decode(buffer, 0, count)
-                    if (chunk.isNotEmpty()) withContext(Dispatchers.Main) { append(chunk) }
-                }
-            } catch (_: Exception) {
-                // Closing the PTY intentionally unblocks the reader.
-            } finally {
-                runCatching { session.close() }
-                withContext(Dispatchers.Main) {
-                    if (pty === session) {
-                        pty = null
-                        append("\n[PTY process ended]\n")
-                    }
-                }
-            }
-        }
+        attachSession(session, if (guest) "\n[Debian ARM64 guest PTY started]\n" else "\n[Android host PTY started; not a Debian guest shell]\n")
     }
 
     fun submit() {
@@ -618,6 +657,40 @@ private fun TerminalScreen(context: Context) {
             }
             append(result)
             busy = false
+        }
+    }
+
+    LaunchedEffect(launchRequest?.app?.id, launchRequest?.backend, activeRootfs) {
+        val request = launchRequest
+        val root = activeRootfs
+        if (request != null && root != null && pty == null) {
+            val result = withContext(Dispatchers.IO) {
+                runCatching {
+                    val file = File(request.app.localPath).canonicalFile
+                    check(file.isFile && AppFileImporter.verify(file, request.app.sha256)) {
+                        "Импортированный файл отсутствует или не прошёл проверку SHA-256"
+                    }
+                    val elf = ElfInspector.inspect(file) ?: error("Файл не является поддерживаемым ELF")
+                    check(elf.loadable) { "ELF не является исполняемым файлом" }
+                    RuntimeComponentVerifier.requireComplete(root)
+                    LinuxGuestSession.startImportedApplication(
+                        importedExecutable = file,
+                        rootfs = root,
+                        backend = request.backend,
+                        rows = terminalRows,
+                        columns = terminalColumns
+                    )
+                }
+            }
+            result.onSuccess { session ->
+                attachSession(session, "\n[Запуск ${request.app.name} через ${request.backend}]\n")
+            }.onFailure { error ->
+                append("\n[Не удалось запустить ${request.app.name}: ${error.message}]\n")
+            }
+            onLaunchConsumed()
+        } else if (request != null && root == null) {
+            append("\n[Linux rootfs не установлен или не активирован]\n")
+            onLaunchConsumed()
         }
     }
 
