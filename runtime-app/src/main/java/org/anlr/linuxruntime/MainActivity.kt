@@ -480,7 +480,7 @@ private fun RuntimeManagerScreen(context: Context, onNotice: (String) -> Unit) {
                         RadioButton(selected == distro, onClick = { selected = distro }, enabled = !installing)
                     }
                     Text("ARM64 rootfs · ANLR patched glibc · FEX · Box64", style = MaterialTheme.typography.bodySmall)
-                    Button(onClick = { install(distro) }, enabled = !installing) { Text(if (activeDistro == distro) "Переустановить $distro" else "Скачать и установить") }
+                    Button(onClick = { install(distro) }, enabled = !installing && BuildConfig.ANLR_RELEASE_PUBLIC_KEY_B64.isNotBlank() && BuildConfig.ANLR_RELEASE_KEY_ID.isNotBlank()) { Text(if (BuildConfig.ANLR_RELEASE_PUBLIC_KEY_B64.isBlank() || BuildConfig.ANLR_RELEASE_KEY_ID.isBlank()) "Сеть: нужен ключ" else if (activeDistro == distro) "Переустановить $distro" else "Скачать и установить") }
                 }
             }
         }
