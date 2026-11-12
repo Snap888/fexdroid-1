@@ -19,6 +19,7 @@ RUNTIME_PKGS=(
   libdrm2 libx11-6 libx11-xcb1 libxcb1 libxcb-dri3-0 libxcb-present0
   libxcb-shm0 libxcb-sync1 libxcb-xfixes0 libxcb-randr0 libxshmfence1
   libwayland-client0 libvulkan1 vulkan-tools xvfb x11-utils
+  xfce4-session xfce4-panel xfdesktop4 xfwm4 thunar xfce4-terminal dbus-x11 xauth x11-xserver-utils xfonts-base
   pulseaudio pulseaudio-utils libpulse0 libasound2t64
   libnss3 libfontconfig1 libfreetype6 libdbus-1-3
   libgl1 libegl1 libgbm1 libxkbcommon0 libudev1 libcap2 libusb-1.0-0
