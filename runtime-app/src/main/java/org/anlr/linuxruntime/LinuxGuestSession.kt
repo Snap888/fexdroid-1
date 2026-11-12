@@ -46,9 +46,17 @@ internal object LinuxGuestSession {
         } else {
             // FEX resolves absolute paths inside FEX_ROOTFS. Box64 reads the
             // executable through the host filesystem but uses guest libraries.
-            val digest = MessageDigest.getInstance("SHA-256")
-                .digest(executable.readBytes())
-                .take(8).joinToString("") { "%02x".format(it.toInt() and 0xff) }
+            val digestEngine = MessageDigest.getInstance("SHA-256")
+            executable.inputStream().use { input ->
+                val buffer = ByteArray(64 * 1024)
+                while (true) {
+                    val count = input.read(buffer)
+                    if (count < 0) break
+                    digestEngine.update(buffer, 0, count)
+                }
+            }
+            val digest = digestEngine.digest().take(8)
+                .joinToString("") { "%02x".format(it.toInt() and 0xff) }
             val safeName = executable.name.replace(Regex("[^A-Za-z0-9._+-]"), "_").take(96)
                 .ifBlank { "application" }
             val appDirectory = File(selectedRoot, "tmp/anlr-imports").apply {
