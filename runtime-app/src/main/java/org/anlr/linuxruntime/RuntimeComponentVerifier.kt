@@ -29,23 +29,33 @@ internal object RuntimeComponentVerifier {
         val nativeShell = executable("bin/sh") || executable("usr/bin/sh")
         val fex = executable("usr/bin/FEX")
         val box64 = executable("usr/bin/box64")
-        val guest = directory("usr/share/anlr/x86_64") &&
-            (executable("usr/share/anlr/x86_64/bin/sh") ||
-             executable("usr/share/anlr/x86_64/usr/bin/sh")) &&
-            File(rootfs, "usr/share/anlr/x86_64/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2").exists()
+        val guestRoot = File(rootfs, "usr/share/anlr/x86_64")
+        val guest = guestRoot.isDirectory &&
+            (File(guestRoot, "bin/sh").let { it.isFile && it.canExecute() } ||
+             File(guestRoot, "usr/bin/sh").let { it.isFile && it.canExecute() }) &&
+            listOf(
+                "lib64/ld-linux-x86-64.so.2",
+                "lib/ld-linux-x86-64.so.2",
+                "lib/x86_64-linux-gnu/ld-linux-x86-64.so.2",
+                "usr/lib/x86_64-linux-gnu/ld-linux-x86-64.so.2"
+            ).any { File(guestRoot, it).isFile }
         val xfce = executable("usr/bin/startxfce4") &&
             executable("usr/bin/xfce4-session") &&
             executable("usr/bin/xfce4-panel") &&
-            executable("usr/bin/xfwm4")
-        val xserver = executable("usr/bin/Xvfb") && executable("usr/bin/xauth")
+            executable("usr/bin/xfdesktop") &&
+            executable("usr/bin/xfwm4") &&
+            executable("usr/bin/thunar")
+        val xserver = executable("usr/bin/Xvfb") &&
+            executable("usr/bin/xauth") &&
+            executable("usr/bin/xdpyinfo")
 
         val missing = buildList {
             if (!nativeShell) add("ARM64 shell")
             if (!fex) add("FEX (/usr/bin/FEX)")
             if (!box64) add("Box64 (/usr/bin/box64)")
-            if (!guest) add("x86-64 guest rootfs / dynamic loader")
-            if (!xfce) add("XFCE4 session/panel/window manager")
-            if (!xserver) add("Xvfb/X11 server tools")
+            if (!guest) add("x86-64 guest rootfs / dynamic loader (checked standard Debian loader locations)")
+            if (!xfce) add("XFCE4 session/panel/desktop/window manager/file manager")
+            if (!xserver) add("Xvfb/X11 server, xauth and xdpyinfo")
         }
         return RuntimeComponentReport(nativeShell, fex, box64, guest, xfce, xserver, missing)
     }
