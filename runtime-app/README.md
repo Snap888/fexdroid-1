@@ -85,3 +85,15 @@ The app now builds an arm64-v8a JNI PTY transport using POSIX master/slave pseud
 
 
 The native ARM64 guest launcher uses the rootfs-patched absolute ELF interpreter path when it resolves inside the active rootfs, and passes a clean guest environment through execve. A Debian guest PTY action is exposed when an active rootfs exists. This launch route still requires the ANLR-patched glibc/FEX payload produced by the repository's payload build; a stock Debian rootfs archive is not sufficient for Android's seccomp and absolute-path constraints.
+
+## Runtime payload build (Ubuntu + FEX + Box64)
+
+The ANLR payload pipeline now targets an Ubuntu 24.04 ARM64 userspace for the native Linux environment. The reproducible cross-build toolchain and the FEX x86-64 guest sysroot remain Debian Trixie for now: the ANLR-patched glibc build and FEX toolchain are pinned to that ABI. The Ubuntu userspace is paired with the patched ANLR glibc during payload assembly; this mixed build must pass the QEMU smoke tests before it is considered usable.
+
+- `scripts/build-ubuntu-rootfs.sh` creates the Ubuntu 24.04 ARM64 runtime rootfs.
+- `scripts/build-fex.sh` builds FEX-Emu with host/guest thunks.
+- `scripts/build-box64.sh` cross-builds Box64 v0.4.4 with ARM64 DynaRec and the Android signal workaround.
+- `scripts/build-anlr-payload.sh` assembles the signed-manifest-compatible tar.gz payload and runs QEMU checks for the ARM64 shell, FEX presence and Box64 startup.
+- `.github/workflows/anlr-payload.yml` builds on an Ubuntu 24.04 GitHub runner and publishes a CI artifact for inspection.
+
+The current pipeline is a build/test artifact, not yet an in-app downloadable release. The app still refuses installation without a pinned Ed25519 trust anchor and a signed manifest. Do not treat a successful QEMU run as proof that Android's seccomp, SELinux, executable-memory policy, FEX/Box64 dynarec or graphics stack works on a phone.
