@@ -5,6 +5,7 @@
 #include <map>
 #include <csignal>
 #include <cstdlib>
+#include <cstdio>
 #include <cstring>
 #include <fcntl.h>
 #include <sys/ioctl.h>
@@ -15,6 +16,24 @@
 #include <vector>
 
 extern char** environ;
+
+static void child_fail(int error_fd, int error_code) {
+    const int saved = error_code;
+    const char* data = reinterpret_cast<const char*>(&saved);
+    size_t remaining = sizeof(saved);
+    while (remaining > 0) {
+        ssize_t written = write(error_fd, data + sizeof(saved) - remaining, remaining);
+        if (written < 0 && errno == EINTR) continue;
+        if (written <= 0) break;
+        remaining -= static_cast<size_t>(written);
+    }
+    _exit(126);
+}
+
+static void throw_pty_error(JNIEnv* env, const char* message) {
+    jclass exception = env->FindClass("java/io/IOException");
+    if (exception) env->ThrowNew(exception, message);
+}
 
 static jlong pack_handle(pid_t pid, int fd) {
     return (static_cast<jlong>(static_cast<uint32_t>(pid)) << 32) |
@@ -97,28 +116,85 @@ Java_org_anlr_linuxruntime_NativePty_nativeSpawn(
     struct winsize size {};
     size.ws_row = static_cast<unsigned short>(rows);
     size.ws_col = static_cast<unsigned short>(columns);
-    ioctl(master, TIOCSWINSZ, &size);
+    if (ioctl(master, TIOCSWINSZ, &size) != 0) {
+        const int error = errno;
+        close(master);
+        env->ReleaseStringUTFChars(executable, exe);
+        env->ReleaseStringUTFChars(working_directory, cwd);
+        char message[128];
+        std::snprintf(message, sizeof(message), "Cannot configure PTY size: errno %d", error);
+        throw_pty_error(env, message);
+        return 0;
+    }
+
+    // CLOEXEC makes EOF on the parent side an unambiguous indication that
+    // execve succeeded. Setup/exec failures send the original errno instead
+    // of looking like an ordinary shell exit with status 126/127.
+    int exec_error_pipe[2];
+    if (pipe2(exec_error_pipe, O_CLOEXEC) != 0) {
+        const int error = errno;
+        close(master);
+        env->ReleaseStringUTFChars(executable, exe);
+        env->ReleaseStringUTFChars(working_directory, cwd);
+        char message[128];
+        std::snprintf(message, sizeof(message), "Cannot create PTY exec-error pipe: errno %d", error);
+        throw_pty_error(env, message);
+        return 0;
+    }
 
     pid_t pid = fork();
     if (pid == 0) {
-        if (setsid() < 0) _exit(126);
+        close(exec_error_pipe[0]);
+        if (setsid() < 0) child_fail(exec_error_pipe[1], errno);
         int slave = open(slave_name, O_RDWR);
-        if (slave < 0) _exit(126);
-        if (ioctl(slave, TIOCSCTTY, 0) != 0) _exit(126);
+        if (slave < 0) child_fail(exec_error_pipe[1], errno);
+        if (ioctl(slave, TIOCSCTTY, 0) != 0) child_fail(exec_error_pipe[1], errno);
         if (dup2(slave, STDIN_FILENO) < 0 ||
             dup2(slave, STDOUT_FILENO) < 0 ||
-            dup2(slave, STDERR_FILENO) < 0) _exit(126);
+            dup2(slave, STDERR_FILENO) < 0) child_fail(exec_error_pipe[1], errno);
         if (slave > STDERR_FILENO) close(slave);
         close(master);
-        if (chdir(cwd) != 0) _exit(126);
+        if (chdir(cwd) != 0) child_fail(exec_error_pipe[1], errno);
         execve(exe, argv.data(), envp.data());
-        _exit(errno == ENOENT ? 127 : 126);
+        child_fail(exec_error_pipe[1], errno);
     }
 
     env->ReleaseStringUTFChars(executable, exe);
     env->ReleaseStringUTFChars(working_directory, cwd);
+    close(exec_error_pipe[1]);
     if (pid < 0) {
+        const int error = errno;
+        close(exec_error_pipe[0]);
         close(master);
+        char message[128];
+        std::snprintf(message, sizeof(message), "Cannot fork PTY process: errno %d", error);
+        throw_pty_error(env, message);
+        return 0;
+    }
+
+    int child_error = 0;
+    size_t received = 0;
+    bool pipe_failed = false;
+    while (received < sizeof(child_error)) {
+        ssize_t count = read(exec_error_pipe[0],
+            reinterpret_cast<char*>(&child_error) + received,
+            sizeof(child_error) - received);
+        if (count < 0 && errno == EINTR) continue;
+        if (count < 0) { pipe_failed = true; break; }
+        if (count == 0) break; // CLOEXEC: execve succeeded.
+        received += static_cast<size_t>(count);
+    }
+    close(exec_error_pipe[0]);
+
+    if (pipe_failed || received != 0) {
+        if (received != sizeof(child_error)) child_error = EIO;
+        close(master);
+        int status = 0;
+        while (waitpid(pid, &status, 0) < 0 && errno == EINTR) {}
+        char message[160];
+        std::snprintf(message, sizeof(message),
+            "PTY child setup/exec failed: errno %d", child_error);
+        throw_pty_error(env, message);
         return 0;
     }
     return pack_handle(pid, master);
