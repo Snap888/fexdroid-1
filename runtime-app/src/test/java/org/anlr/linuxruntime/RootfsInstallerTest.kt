@@ -11,6 +11,8 @@ class RootfsInstallerTest {
         val files = Files.createTempDirectory("anlr-installer-files-").toFile()
         val rootfs = Files.createTempDirectory("anlr-installer-rootfs-").toFile()
         try {
+            val oldRelease = File(files, "old-release").apply { mkdirs() }
+            Files.createSymbolicLink(File(files, "rootfs").toPath(), oldRelease.toPath())
             assertTrue(File(rootfs, "usr/bin").mkdirs())
             File(rootfs, "usr/bin/sh").writeText("shell")
             assertTrue(File(rootfs, "usr/lib/anlr").mkdirs())
