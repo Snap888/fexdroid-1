@@ -53,7 +53,7 @@ import json, pathlib, sys
 p = pathlib.Path(sys.argv[1])
 cfg = json.loads(p.read_text())
 cfg.setdefault("Config", {})["RootFS"] = str(pathlib.Path(sys.argv[2]).resolve())
-p.write_text(json.dumps(cfg, indent=2) + "\\n")
+p.write_text(json.dumps(cfg, indent=2) + "\n")
 PY
 
 # The archive format and metadata match RootfsManifestVerifier/SafeRootfsExtractor.
@@ -76,7 +76,7 @@ print(json.dumps({"architecture":"aarch64", "archiveFormat":"tar.gz",
                   "expandedSizeBytes":expanded, "archiveSha256":h.hexdigest(),
                   "runtimeAbi":"anlr-glibc-v1",
                   "runtimeRoot":(root / 'usr/lib/anlr/runtime-root').read_text().strip()},
-                 indent=2) + "\\n")
+                 indent=2) + "\n")
 PY
 
 # QEMU smoke test the ARM64 shell and verify the FEX executable is present.
