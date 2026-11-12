@@ -28,7 +28,7 @@ internal class AnlrDesktopSession(
     val pulseSocket: String get() = File(rootfs, "tmp/pulse/native").absolutePath
     val audioFifo: String get() = File(rootfs, "tmp/anlr-pulse.fifo").absolutePath
 
-    private fun launch(path: String, args: List<String>, env: Map<String, String> = emptyMap()): NativePty {
+    private fun launch(path: String, args: List<String>, env: Map<String, String> = emptyMap(), drainOutput: Boolean = true): NativePty {
         check(!closed.get()) { "Desktop session is stopped" }
         val executable = File(rootfs, path.removePrefix("/"))
         check(executable.isFile && executable.canExecute()) { "Missing executable: $path" }
@@ -45,7 +45,14 @@ internal class AnlrDesktopSession(
         return NativePty.spawn(
             plan.executable.absolutePath, plan.arguments, plan.workingDirectory.absolutePath,
             rows = 40, columns = 120, environment = merged, inheritEnvironment = false
-        ).also { synchronized(processes) { processes += it } }
+        ).also { process ->
+            synchronized(processes) { processes += process }
+            if (drainOutput) thread(name = "anlr-${File(path).name}-log", isDaemon = true) {
+                val bytes = ByteArray(2048)
+                try { while (!closed.get()) { val n = process.read(bytes); if (n <= 0) break; log("[${File(path).name}] ${String(bytes, 0, n, Charsets.UTF_8).trimEnd()}") } }
+                catch (_: Exception) { }
+            }
+        }
     }
 
     /** Starts Xvfb and waits until the server publishes its SysV framebuffer id. */
@@ -59,7 +66,8 @@ internal class AnlrDesktopSession(
         val xvfb = launch(
             "/usr/bin/Xvfb",
             listOf(":0", "-screen", "0", "${width}x${height}x24", "-shmem", "-ac", "-nolisten", "tcp", "-pn"),
-            mapOf("LIBGL_DRIVERS_PATH" to File(rootfs, "usr/lib/aarch64-linux-gnu/dri").absolutePath)
+            mapOf("LIBGL_DRIVERS_PATH" to File(rootfs, "usr/lib/aarch64-linux-gnu/dri").absolutePath),
+            drainOutput = false
         )
         xvfbPty = xvfb
         val ready = CountDownLatch(1)
