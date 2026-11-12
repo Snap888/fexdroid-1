@@ -64,6 +64,8 @@ mkdir -p "$A/tmp" "$A/var/tmp" "$A/dev/shm" "$A/home"
 install -D -m 0644 /dev/null "$A/usr/lib/anlr/runtime-abi"
 printf '%s\n' 'anlr-glibc-v1' > "$A/usr/lib/anlr/runtime-abi"
 printf '%s\n' "$FXD_ROOT" > "$A/usr/lib/anlr/runtime-root"
+[[ "$(cat "$A/usr/lib/anlr/runtime-abi")" == "anlr-glibc-v1" ]] || { echo "invalid ANLR glibc ABI marker" >&2; exit 1; }
+[[ "$(cat "$A/usr/lib/anlr/runtime-root")" == "$FXD_ROOT" ]] || { echo "invalid ANLR runtime-root marker" >&2; exit 1; }
 # Empty sysfs PCI tree FEX shows guests as /sys/bus/pci (patches/fex/0002, NOTES.md N-028).
 mkdir -p "$A/usr/share/fex-emu/fexdroid-empty-pci/devices" "$A/usr/share/fex-emu/fexdroid-empty-pci/drivers"
 chmod 1777 "$A/tmp" "$A/var/tmp" "$A/dev/shm"
