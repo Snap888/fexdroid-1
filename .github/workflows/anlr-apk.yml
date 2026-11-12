@@ -23,6 +23,7 @@ permissions:
 jobs:
   runtime-app:
     runs-on: ubuntu-24.04
+    environment: Key
     timeout-minutes: 45
     steps:
       - uses: actions/checkout@v4
