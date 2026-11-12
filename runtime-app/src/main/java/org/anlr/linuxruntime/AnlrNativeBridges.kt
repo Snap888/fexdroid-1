@@ -61,6 +61,7 @@ internal object AnlrXInput {
 }
 
 internal object AnlrAudioBridge {
+    init { System.loadLibrary("anlr_io") }
     external fun start(fifo: String): String
     external fun frames(): Long
     external fun gaps(): Int
