@@ -11,12 +11,17 @@ internal object LinuxGuestSession {
         backendExecutable: File? = null,
         rows: Int = 24,
         columns: Int = 80,
-        guestRootfs: File = if (backend == ExecutionBackend.FEX_X86_64) File(rootfs, "usr/share/anlr/x86_64") else rootfs
+        guestRootfs: File = if (backend == ExecutionBackend.NATIVE_ARM64) rootfs else File(rootfs, "usr/share/anlr/x86_64")
     ): NativePty {
         val shell = File(guestRootfs, "bin/sh").canonicalFile
         check(shell.isFile) { "Debian shell /bin/sh is missing" }
+        val selectedBackendExecutable = backendExecutable ?: when (backend) {
+            ExecutionBackend.NATIVE_ARM64 -> null
+            ExecutionBackend.FEX_X86_64 -> File(rootfs, "usr/bin/FEX")
+            ExecutionBackend.BOX64_X86_64 -> File(rootfs, "usr/bin/box64")
+        }
         val plan = LinuxLaunchPlanner.plan(
-            shell, rootfs, backend, backendExecutable,
+            shell, rootfs, backend, selectedBackendExecutable,
             arguments = listOf("-i"),
             workingDirectory = guestRootfs,
             dependencyRootfs = guestRootfs
@@ -36,7 +41,7 @@ internal object LinuxGuestSession {
         workingDirectory: File = importedExecutable.parentFile ?: rootfs,
         rows: Int = 24,
         columns: Int = 80,
-        dependencyRootfs: File = if (backend == ExecutionBackend.FEX_X86_64) File(rootfs, "usr/share/anlr/x86_64") else rootfs
+        dependencyRootfs: File = if (backend == ExecutionBackend.NATIVE_ARM64) rootfs else File(rootfs, "usr/share/anlr/x86_64")
     ): NativePty {
         val executable = importedExecutable.canonicalFile
         require(executable.isFile) { "Imported application is missing" }
