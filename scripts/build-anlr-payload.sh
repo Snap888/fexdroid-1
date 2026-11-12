@@ -107,10 +107,24 @@ print(json.dumps({
 }, indent=2) + "\n")
 PY
 
-  # Run both translators against the same known-good dynamically linked x86-64 ELF.
-  # Do not use FEX --version: this FEX build does not implement that CLI option.
+  # FEX consumes a guest-absolute path relative to its configured RootFS.
+  # Box64 is a host ARM64 binary: run it from the mounted guest root so its
+  # x86-64 dynamic loader and libraries resolve inside that rootfs.
   ANLR_STAGE_DIR="$stage" scripts/test-payload-qemu.sh \
-    'set -euo pipefail; echo ANLR_ROOTFS_SMOKE_BEGIN; "$FXD_ROOT/usr/bin/id"; "$FXD_ROOT/bin/sh" -c "echo ANLR_GUEST_EXEC_OK"; test -x "$FXD_ROOT/usr/bin/FEX"; test -x "$FXD_ROOT/usr/bin/box64"; test -x "$FXD_ROOT/usr/share/anlr/smoke/anlr-x86_64-smoke"; "$FXD_ROOT/usr/bin/FEX" "$FXD_ROOT/usr/share/anlr/smoke/anlr-x86_64-smoke"; BOX64_DYNAREC=0 "$FXD_ROOT/usr/bin/box64" "$FXD_ROOT/usr/share/anlr/smoke/anlr-x86_64-smoke"; echo ANLR_ROOTFS_SMOKE_END'
+    'set -euo pipefail
+     smoke=/usr/share/anlr/smoke/anlr-x86_64-smoke
+     echo ANLR_ROOTFS_SMOKE_BEGIN
+     "$FXD_ROOT/usr/bin/id"
+     "$FXD_ROOT/bin/sh" -c "echo ANLR_GUEST_EXEC_OK"
+     test -x "$FXD_ROOT/usr/bin/FEX"
+     test -x "$FXD_ROOT/usr/bin/box64"
+     test -x "$FEX_ROOTFS$smoke"
+     echo ANLR_FEX_SMOKE_BEGIN
+     "$FXD_ROOT/usr/bin/FEX" "$smoke"
+     echo ANLR_BOX64_SMOKE_BEGIN
+     cd "$FEX_ROOTFS"
+     BOX64_DYNAREC=0 BOX64_LD_LIBRARY_PATH="$FEX_ROOTFS/usr/lib/x86_64-linux-gnu:$FEX_ROOTFS/lib/x86_64-linux-gnu" "$FXD_ROOT/usr/bin/box64" ".$smoke"
+     echo ANLR_ROOTFS_SMOKE_END'
   echo "Built $distro $version: $archive"
 }
 
