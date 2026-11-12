@@ -546,6 +546,7 @@ private fun TerminalScreen(
     var busy by remember { mutableStateOf(false) }
     var pty by remember { mutableStateOf<NativePty?>(null) }
     var activeRootfs by remember { mutableStateOf<File?>(null) }
+    var rootfsResolved by remember { mutableStateOf(false) }
     var ptyReader by remember { mutableStateOf<Job?>(null) }
     var history by remember { mutableStateOf(emptyList<String>()) }
     var historyIndex by remember { mutableIntStateOf(0) }
@@ -663,7 +664,7 @@ private fun TerminalScreen(
     LaunchedEffect(launchRequest?.app?.id, launchRequest?.backend, activeRootfs) {
         val request = launchRequest
         val root = activeRootfs
-        if (request != null && root != null && pty == null) {
+        if (request != null && rootfsResolved && root != null && pty == null) {
             val result = withContext(Dispatchers.IO) {
                 runCatching {
                     val file = File(request.app.localPath).canonicalFile
@@ -688,7 +689,7 @@ private fun TerminalScreen(
                 append("\n[Не удалось запустить ${request.app.name}: ${error.message}]\n")
             }
             onLaunchConsumed()
-        } else if (request != null && root == null) {
+        } else if (request != null && rootfsResolved && root == null) {
             append("\n[Linux rootfs не установлен или не активирован]\n")
             onLaunchConsumed()
         }
@@ -698,6 +699,7 @@ private fun TerminalScreen(
         activeRootfs = withContext(Dispatchers.IO) {
             runCatching { RuntimeStorageManager(context.filesDir).activeRootDirectory() }.getOrNull()
         }
+        rootfsResolved = true
         val saved = runCatching { org.json.JSONArray(prefs.getString("history", "[]")) }.getOrNull()
         history = saved?.let { array -> (0 until array.length()).map { array.optString(it) }.filter { it.isNotBlank() }.takeLast(100) } ?: emptyList()
         historyIndex = history.size
