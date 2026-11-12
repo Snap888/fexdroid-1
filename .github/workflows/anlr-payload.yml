@@ -26,6 +26,7 @@ jobs:
     env:
       FEXROOT_PATH: /data/data/org.anlr.linuxruntime/files/rootfs
       BOX64_TAG: v0.4.4
+      ANLR_SIGNING_CONFIGURED: ${{ secrets.ANLR_RELEASE_PRIVATE_KEY_B64 != '' && secrets.ANLR_RELEASE_KEY_ID != '' }}
       CCACHE_DIR: ${{ github.workspace }}/.ccache
     steps:
       - uses: actions/checkout@v4
@@ -100,7 +101,7 @@ jobs:
           ANLR_PREBUILT_STAGES=1 BUILD_MESA=0 bash scripts/build-anlr-payload.sh
 
       - name: Create signed release manifests
-        if: ${{ secrets.ANLR_RELEASE_PRIVATE_KEY_B64 != '' && secrets.ANLR_RELEASE_KEY_ID != '' }}
+        if: env.ANLR_SIGNING_CONFIGURED == 'true'
         env:
           RELEASE_PRIVATE_KEY_B64: ${{ secrets.ANLR_RELEASE_PRIVATE_KEY_B64 }}
           RELEASE_KEY_ID: ${{ secrets.ANLR_RELEASE_KEY_ID }}
