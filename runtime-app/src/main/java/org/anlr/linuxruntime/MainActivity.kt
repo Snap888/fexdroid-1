@@ -165,11 +165,11 @@ private fun AnlrApp() {
         containerColor = MaterialTheme.colorScheme.background,
         bottomBar = {
             NavigationBar {
-                listOf("Главная", "Приложения", "Терминал", "XFCE4").forEachIndexed { index, label ->
+                listOf("Главная", "Приложения", "Терминал", "XFCE4", "Система").forEachIndexed { index, label ->
                     NavigationBarItem(
                         selected = selectedTab == index,
                         onClick = { selectedTab = index },
-                        icon = { Text(listOf("⌂", "▦", ">_", "▣")[index], fontSize = 18.sp) },
+                        icon = { Text(listOf("⌂", "▦", ">_", "▣", "↓")[index], fontSize = 18.sp) },
                         label = { Text(label) }
                     )
                 }
@@ -191,13 +191,14 @@ private fun AnlrApp() {
                 }
             }
             when (selectedTab) {
-                0 -> HomeScreen(onApps = { selectedTab = 1 }, onTerminal = { selectedTab = 2 }, onDesktop = { selectedTab = 3 })
+                0 -> HomeScreen(onApps = { selectedTab = 1 }, onTerminal = { selectedTab = 2 }, onDesktop = { selectedTab = 3 }, onRuntime = { selectedTab = 4 })
                 1 -> AppsScreen(apps, onImport = { picker.launch(arrayOf("*/*")) }, onLaunch = { notice = "Runtime ещё не установлен. Импорт приложения сохранён; запуск будет доступен после установки FEX/Box64 и rootfs." }, onRemove = { id ->
                     apps.firstOrNull { it.id == id }?.localPath?.let { AppFileImporter.deleteManagedCopy(context.filesDir, it) }
                     persist(apps.filterNot { it.id == id })
                 })
                 2 -> TerminalScreen(context)
-                else -> DesktopScreen()
+                3 -> DesktopScreen()
+                else -> RuntimeManagerScreen(context) { notice = it }
             }
         }
     }
@@ -207,7 +208,7 @@ private fun AnlrApp() {
 }
 
 @Composable
-private fun HomeScreen(onApps: () -> Unit, onTerminal: () -> Unit, onDesktop: () -> Unit) {
+private fun HomeScreen(onApps: () -> Unit, onTerminal: () -> Unit, onDesktop: () -> Unit, onRuntime: () -> Unit) {
     val info = remember { deviceSummary() }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 18.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
         Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer)) {
@@ -215,7 +216,10 @@ private fun HomeScreen(onApps: () -> Unit, onTerminal: () -> Unit, onDesktop: ()
                 Text("Linux Runtime", style = MaterialTheme.typography.titleLarge)
                 Text("Среда выполнения не установлена", style = MaterialTheme.typography.bodyMedium)
                 Text("Сначала установите системный образ и движок трансляции. Интерфейс и менеджер приложений уже доступны.", style = MaterialTheme.typography.bodySmall)
-                Button(onClick = onApps) { Text("Мои приложения") }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Button(onClick = onRuntime) { Text("Установить Linux") }
+                    OutlinedButton(onClick = onApps) { Text("Мои приложения") }
+                }
             }
         }
         Text("Быстрый доступ", style = MaterialTheme.typography.titleLarge)
@@ -325,6 +329,127 @@ private fun AppsScreen(apps: List<ImportedApp>, onImport: () -> Unit, onLaunch: 
         Text("Импорт копирует файл в приватное хранилище ANLR, вычисляет SHA-256 и определяет ELF e_machine. Это проверка формата, а не гарантия безопасности. Исполнение отключено до установки Linux rootfs и backend.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
+@Composable
+private fun RuntimeManagerScreen(context: Context, onNotice: (String) -> Unit) {
+    var activeId by remember { mutableStateOf<String?>(null) }
+    var activeDistro by remember { mutableStateOf("Не установлена") }
+    var installing by remember { mutableStateOf(false) }
+    var selected by remember { mutableStateOf("Debian") }
+    var progress by remember { mutableFloatStateOf(0f) }
+    var progressLabel by remember { mutableStateOf("") }
+    var status by remember { mutableStateOf("Проверка установленной системы…") }
+    val scope = rememberCoroutineScope()
+
+    LaunchedEffect(Unit) {
+        val result = withContext(Dispatchers.IO) {
+            runCatching {
+                val storage = RuntimeStorageManager(context.filesDir)
+                storage.initialize()
+                val root = storage.activeRootDirectory()
+                val id = storage.activeReleaseId()
+                val osRelease = root?.let { File(it, "etc/os-release") }?.takeIf { it.isFile }?.readText().orEmpty()
+                val distro = when {
+                    osRelease.contains("ID=ubuntu") -> "Ubuntu"
+                    osRelease.contains("ID=debian") -> "Debian"
+                    root != null -> "Linux ARM64"
+                    else -> "Не установлена"
+                }
+                Triple(id, distro, storage)
+            }
+        }
+        result.onSuccess {
+            activeId = it.first
+            activeDistro = it.second
+            status = if (it.first == null) "Linux-система не установлена" else "Активна: ${it.second} · ${it.first}"
+        }.onFailure { status = "Ошибка проверки: ${it.message}" }
+    }
+
+    fun install(distro: String) {
+        if (installing) return
+        installing = true
+        progress = 0f
+        progressLabel = "Подготовка установки $distro…"
+        scope.launch {
+            val result = withContext(Dispatchers.IO) {
+                runCatching {
+                    check(BuildConfig.ANLR_RELEASE_PUBLIC_KEY_B64.isNotBlank() && BuildConfig.ANLR_RELEASE_KEY_ID.isNotBlank()) {
+                        "В этой APK не закреплён release public key. Нельзя безопасно установить исполняемый rootfs."
+                    }
+                    val slug = if (distro == "Debian") "debian" else "ubuntu"
+                    val base = "https://github.com/Snap888/fexdroid-1/releases/latest/download/$slug-manifest"
+                    fun fetch(url: String): String {
+                        val connection = java.net.URL(url).openConnection() as java.net.HttpURLConnection
+                        try {
+                            connection.connectTimeout = 15000
+                            connection.readTimeout = 30000
+                            connection.instanceFollowRedirects = true
+                            check(connection.responseCode == 200) { "HTTP ${connection.responseCode} при загрузке $url" }
+                            return connection.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
+                        } finally { connection.disconnect() }
+                    }
+                    val manifest = fetch("$base.json").toByteArray(Charsets.UTF_8)
+                    val signature = fetch("$base.sig").trim()
+                    RootfsInstaller.install(
+                        manifestBytes = manifest,
+                        signatureBase64 = signature,
+                        trustedPublicKeyBase64 = BuildConfig.ANLR_RELEASE_PUBLIC_KEY_B64,
+                        expectedKeyId = BuildConfig.ANLR_RELEASE_KEY_ID,
+                        filesDir = context.filesDir,
+                        maxArchiveSizeBytes = 8L * 1024L * 1024L * 1024L,
+                        maxExtractedBytes = 24L * 1024L * 1024L * 1024L
+                    ) { downloaded, total ->
+                        progress = if (total > 0) downloaded.toFloat() / total else 0f
+                        progressLabel = "Загрузка $distro: ${downloaded / (1024 * 1024)} / ${total / (1024 * 1024)} MB"
+                    }
+                }
+            }
+            result.onSuccess { installed ->
+                activeId = installed.releaseId
+                activeDistro = distro
+                status = "Активна: $distro · ${installed.releaseId}"
+                progress = 1f
+                progressLabel = "Установка завершена"
+                onNotice("$distro установлена и активирована. Теперь можно запускать ARM64 Linux shell.")
+            }.onFailure {
+                status = "Установка $distro не выполнена: ${it.message}"
+                progressLabel = ""
+                onNotice("Не удалось установить $distro: ${it.message}")
+            }
+            installing = false
+        }
+    }
+
+    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(18.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        Text("Linux Runtime Manager", style = MaterialTheme.typography.headlineSmall)
+        Card(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                Text("Текущая система", style = MaterialTheme.typography.titleMedium)
+                Text(activeDistro, style = MaterialTheme.typography.titleLarge)
+                Text(status, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                if (activeId != null) Text("Release ID: $activeId", style = MaterialTheme.typography.labelSmall)
+            }
+        }
+        Text("Доступные дистрибутивы", style = MaterialTheme.typography.titleMedium)
+        listOf("Debian", "Ubuntu").forEach { distro ->
+            Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = if (selected == distro) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surface)) {
+                Column(Modifier.fillMaxWidth().clickable(enabled = !installing) { selected = distro }.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween, verticalAlignment = Alignment.CenterVertically) {
+                        Text(if (distro == "Debian") "Debian 13 Trixie · ARM64" else "Ubuntu 24.04 LTS · ARM64", style = MaterialTheme.typography.titleMedium)
+                        RadioButton(selected == distro, onClick = { selected = distro }, enabled = !installing)
+                    }
+                    Text("ARM64 rootfs · ANLR patched glibc · FEX · Box64", style = MaterialTheme.typography.bodySmall)
+                    Button(onClick = { install(distro) }, enabled = !installing) { Text(if (activeDistro == distro) "Переустановить $distro" else "Скачать и установить") }
+                }
+            }
+        }
+        if (installing || progressLabel.isNotBlank()) {
+            LinearProgressIndicator(progress = { progress }, modifier = Modifier.fillMaxWidth())
+            Text(progressLabel, style = MaterialTheme.typography.bodySmall)
+        }
+        Text("Установка выполняется в приватное хранилище APK. Архив проверяется по SHA-256, манифест — Ed25519. Для загрузки необходим опубликованный подписанный релиз и публичный ключ, закреплённый при сборке APK.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+    }
+}
+
 @Composable
 private fun TerminalScreen(context: Context) {
     var command by remember { mutableStateOf("") }
