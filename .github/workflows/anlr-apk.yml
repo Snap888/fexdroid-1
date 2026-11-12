@@ -60,14 +60,16 @@ jobs:
               der=base64.b64decode(compact,altchars=b"-_",validate=True)
           pathlib.Path(der_path).write_bytes(der)
           canonical=base64.b64encode(der).decode()
-          with open(env_path,"a") as f: f.write("ANLR_PUBLIC_KEY_NORMALIZED="+canonical+"\\n")
+          with open(env_path,"a") as f: f.write("ANLR_PUBLIC_KEY_NORMALIZED="+canonical+"\n")
           PY
           openssl pkey -pubin -inform DER -in "$RUNNER_TEMP/anlr-release-public.der" -noout
       - name: Build independent runtime APK
         env:
-          ORG_GRADLE_PROJECT_ANLR_RELEASE_PUBLIC_KEY_B64: ${{ env.ANLR_PUBLIC_KEY_NORMALIZED }}
-          ORG_GRADLE_PROJECT_ANLR_RELEASE_KEY_ID: ${{ secrets.ANLR_RELEASE_KEY_ID }}
-        run: ./gradlew --no-daemon --stacktrace :runtime-app:testDebugUnitTest :runtime-app:assembleDebug
+          RELEASE_KEY_ID: ${{ secrets.ANLR_RELEASE_KEY_ID }}
+        run: |
+          ORG_GRADLE_PROJECT_ANLR_RELEASE_PUBLIC_KEY_B64="$ANLR_PUBLIC_KEY_NORMALIZED" \
+          ORG_GRADLE_PROJECT_ANLR_RELEASE_KEY_ID="$RELEASE_KEY_ID" \
+            ./gradlew --no-daemon --stacktrace :runtime-app:testDebugUnitTest :runtime-app:assembleDebug
       - uses: actions/upload-artifact@v4
         with:
           name: anlr-debug-apk
