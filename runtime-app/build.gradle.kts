@@ -13,7 +13,14 @@ android {
         versionName = "0.1.0-dev"
         ndk { abiFilters += "arm64-v8a" }
     }
-    buildFeatures { compose = true }
+    buildFeatures {
+        compose = true
+        buildConfig = true
+    }
+    defaultConfig {
+        buildConfigField("String", "ANLR_RELEASE_PUBLIC_KEY_B64", "\"\${providers.gradleProperty("ANLR_RELEASE_PUBLIC_KEY_B64").orNull ?: ""}\"")
+        buildConfigField("String", "ANLR_RELEASE_KEY_ID", "\"\${providers.gradleProperty("ANLR_RELEASE_KEY_ID").orNull ?: ""}\"")
+    }
     externalNativeBuild {
         cmake {
             path = file("src/main/cpp/CMakeLists.txt")
