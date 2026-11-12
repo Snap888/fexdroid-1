@@ -146,7 +146,7 @@ internal object RootfsInstaller {
             "Staging directory belongs to a different local archive"
         }
         storage.updateStagingJournal(releaseId, sha256, RootfsInstallPhase.EXTRACTING)
-        check(staging.usableSpace >= maxExtractedBytes.coerceAtMost(archiveSize * 8)) {
+        check(staging.usableSpace >= archiveSize * 2) {
             "Insufficient free space for rootfs extraction"
         }
         val root = File(staging, "rootfs")
