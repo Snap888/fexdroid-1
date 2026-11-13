@@ -117,6 +117,34 @@ class ElfCompatibilityCheckerTest {
         }
     }
 
+
+    @Test fun resolvesDeviceInterpreterThroughDataDataAliasAndActiveRootfsSymlink() {
+        val base = Files.createTempDirectory("anlr-android-data-alias-").toFile()
+        try {
+            val userFiles = File(base, "data/user/0/org.anlr.linuxruntime/files")
+            val releaseRoot = File(userFiles, "runtime/rootfs/releases/r1/rootfs")
+            val activeRoot = File(userFiles, "rootfs")
+            val legacyFiles = File(base, "data/data/org.anlr.linuxruntime/files")
+            val loader = File(releaseRoot, "usr/lib/aarch64-linux-gnu/ld-linux-aarch64.so.1")
+            loader.parentFile.mkdirs()
+            loader.writeText("")
+            File(releaseRoot, "usr/lib/aarch64-linux-gnu/libc.so.6").writeText("")
+            Files.createDirectories(activeRoot.parentFile.toPath())
+            Files.createSymbolicLink(activeRoot.toPath(), userFiles.toPath().relativize(releaseRoot.toPath()))
+            Files.createDirectories(legacyFiles.parentFile.toPath())
+            Files.createSymbolicLink(legacyFiles.toPath(), userFiles.toPath().let { base.toPath().relativize(it.toPath()) })
+
+            val interpreter = File(legacyFiles, "rootfs/usr/lib/aarch64-linux-gnu/ld-linux-aarch64.so.1").absolutePath
+            val report = ElfCompatibilityChecker.check(
+                elf(interpreter = interpreter), activeRoot, ExecutionBackend.NATIVE_ARM64
+            )
+            assertTrue(report.reasons.toString(), report.compatible)
+            assertEquals(loader.canonicalPath, report.resolvedLibraries["PT_INTERP"])
+        } finally {
+            base.deleteRecursively()
+        }
+    }
+
     @Test fun resolvesLib64InterpreterAndRejectsSymlinkEscape() {
         val root = Files.createTempDirectory("anlr-compat-lib64-").toFile()
         val outside = Files.createTempDirectory("anlr-compat-outside-").toFile()
