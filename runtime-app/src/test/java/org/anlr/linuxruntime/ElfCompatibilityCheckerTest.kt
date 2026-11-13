@@ -132,7 +132,7 @@ class ElfCompatibilityCheckerTest {
             Files.createDirectories(activeRoot.parentFile.toPath())
             Files.createSymbolicLink(activeRoot.toPath(), userFiles.toPath().relativize(releaseRoot.toPath()))
             Files.createDirectories(legacyFiles.parentFile.toPath())
-            Files.createSymbolicLink(legacyFiles.toPath(), userFiles.toPath().let { base.toPath().relativize(it.toPath()) })
+            Files.createSymbolicLink(legacyFiles.toPath(), legacyFiles.parentFile.toPath().relativize(userFiles.toPath()))
 
             val interpreter = File(legacyFiles, "rootfs/usr/lib/aarch64-linux-gnu/ld-linux-aarch64.so.1").absolutePath
             val report = ElfCompatibilityChecker.check(
