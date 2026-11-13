@@ -98,16 +98,18 @@ internal object ElfCompatibilityChecker {
         // /data/data/org.anlr.linuxruntime/files/rootfs/usr/lib/.../ld-linux).
         // Treat that as an already-rooted path. Prepending root again would look
         // for rootfs/data/data/... and reject every native dynamic executable.
-        val rootPath = root.canonicalFile.toPath()
+        val rawRootPath = root.absoluteFile.toPath().normalize()
+        val canonicalRootPath = root.canonicalFile.toPath()
         val requested = java.nio.file.Paths.get(guestPath).normalize()
-        val candidatePath = if (requested.isAbsolute && requested.startsWith(rootPath)) {
-            requested
-        } else {
-            if (requested.isAbsolute.not()) return null
-            rootPath.resolve(requested.toString().removePrefix("/")).normalize()
+        val candidatePath = when {
+            requested.isAbsolute && requested.startsWith(rawRootPath) -> requested
+            requested.isAbsolute && requested.startsWith(canonicalRootPath) -> requested
+            requested.isAbsolute -> canonicalRootPath.resolve(requested.toString().removePrefix("/")).normalize()
+            else -> return null
         }
-        if (!candidatePath.startsWith(rootPath)) return null
+        // Check the resolved target, not just the lexical path: symlinks inside
+        // the rootfs must never redirect a loader/dependency outside the release.
         val candidate = runCatching { candidatePath.toFile().canonicalFile }.getOrNull() ?: return null
-        return candidate.takeIf { it.toPath().startsWith(rootPath) }
+        return candidate.takeIf { it.toPath().startsWith(canonicalRootPath) }
     }
 }
