@@ -93,22 +93,29 @@ internal object ElfCompatibilityChecker {
      */
     private fun resolveGuestPath(root: File, guestPath: String): File? {
         if (!guestPath.startsWith("/") || guestPath.contains('\\')) return null
-        // ANLR-patched glibc and packaged ELF files carry the absolute Android
-        // path in PT_INTERP (for example
-        // /data/data/org.anlr.linuxruntime/files/rootfs/usr/lib/.../ld-linux).
-        // Treat that as an already-rooted path. Prepending root again would look
-        // for rootfs/data/data/... and reject every native dynamic executable.
-        val rawRootPath = root.absoluteFile.toPath().normalize()
+        // ELF files built for ANLR may embed the Android absolute path in
+        // PT_INTERP, e.g. /data/data/<package>/files/rootfs/usr/lib/... .
+        // Android commonly exposes the same app directory through both
+        // /data/data and /data/user/0. Path.startsWith() compares strings and
+        // cannot recognize those aliases; canonicalize the embedded host path
+        // first, then enforce containment against the canonical active rootfs.
         val canonicalRootPath = root.canonicalFile.toPath()
-        val requested = java.nio.file.Paths.get(guestPath).normalize()
-        val candidatePath = when {
-            requested.isAbsolute && requested.startsWith(rawRootPath) -> requested
-            requested.isAbsolute && requested.startsWith(canonicalRootPath) -> requested
-            requested.isAbsolute -> canonicalRootPath.resolve(requested.toString().removePrefix("/")).normalize()
-            else -> return null
+        val hostPath = runCatching { File(guestPath).canonicalFile }.getOrNull()
+        if (hostPath != null && hostPath.toPath().startsWith(canonicalRootPath)) {
+            return hostPath
         }
-        // Check the resolved target, not just the lexical path: symlinks inside
-        // the rootfs must never redirect a loader/dependency outside the release.
+
+        // Ordinary Linux PT_INTERP paths (/lib/..., /usr/lib/...) are guest
+        // paths, not host paths. Resolve them below the selected rootfs.
+        val requested = java.nio.file.Paths.get(guestPath).normalize()
+        if (!requested.isAbsolute) return null
+        val candidatePath = canonicalRootPath
+            .resolve(requested.toString().removePrefix("/"))
+            .normalize()
+        if (!candidatePath.startsWith(canonicalRootPath)) return null
+
+        // Resolve every symlink before the final containment check. This rejects
+        // both guest-root symlink escapes and host paths outside the rootfs.
         val candidate = runCatching { candidatePath.toFile().canonicalFile }.getOrNull() ?: return null
         return candidate.takeIf { it.toPath().startsWith(canonicalRootPath) }
     }
