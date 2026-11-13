@@ -93,9 +93,21 @@ internal object ElfCompatibilityChecker {
      */
     private fun resolveGuestPath(root: File, guestPath: String): File? {
         if (!guestPath.startsWith("/") || guestPath.contains('\\')) return null
-        val relative = guestPath.removePrefix("/")
-        if (relative.isBlank() || relative.split('/').any { it == "." || it == ".." || it.isBlank() }) return null
-        val candidate = runCatching { File(root, relative).canonicalFile }.getOrNull() ?: return null
-        return candidate.takeIf { it.toPath().startsWith(root.toPath()) }
+        // ANLR-patched glibc and packaged ELF files carry the absolute Android
+        // path in PT_INTERP (for example
+        // /data/data/org.anlr.linuxruntime/files/rootfs/usr/lib/.../ld-linux).
+        // Treat that as an already-rooted path. Prepending root again would look
+        // for rootfs/data/data/... and reject every native dynamic executable.
+        val rootPath = root.canonicalFile.toPath()
+        val requested = java.nio.file.Paths.get(guestPath).normalize()
+        val candidatePath = if (requested.isAbsolute && requested.startsWith(rootPath)) {
+            requested
+        } else {
+            if (requested.isAbsolute.not()) return null
+            rootPath.resolve(requested.toString().removePrefix("/")).normalize()
+        }
+        if (!candidatePath.startsWith(rootPath)) return null
+        val candidate = runCatching { candidatePath.toFile().canonicalFile }.getOrNull() ?: return null
+        return candidate.takeIf { it.toPath().startsWith(rootPath) }
     }
 }
