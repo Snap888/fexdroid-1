@@ -34,7 +34,7 @@ internal object AnlrXInput {
 
     private val keyMap = buildMap {
         val rows = listOf("qwertyuiop" to 16, "asdfghjkl" to 30, "zxcvbnm" to 44)
-        rows.forEach { (keys, start) -> keys.forEachIndexed { i, c -> put(KeyEvent.KEYCODE_A + c - 'a', start + i) } }
+        rows.forEach { (keys, start) -> keys.forEachIndexed { i, c -> put(KeyEvent.KEYCODE_A + (c - 'a'), start + i) } }
         for (d in 1..9) put(KeyEvent.KEYCODE_0 + d, 1 + d)
         put(KeyEvent.KEYCODE_0, 11)
         val fixed = mapOf(
