@@ -64,7 +64,7 @@ internal object ElfCompatibilityChecker {
         }
 
         elf.interpreter?.let { interpreter ->
-            val candidate = resolveGuestPath(canonicalRoot, interpreter)
+            val candidate = resolveGuestPath(rootfs, interpreter)
             if (candidate == null || !candidate.isFile) {
                 reasons += "ELF interpreter is missing or escapes dependency rootfs: $interpreter"
             } else {
@@ -78,7 +78,7 @@ internal object ElfCompatibilityChecker {
                 continue
             }
             val candidate = expected.asSequence()
-                .mapNotNull { directory -> resolveGuestPath(canonicalRoot, "/$directory/$library") }
+                .mapNotNull { directory -> resolveGuestPath(rootfs, "/$directory/$library") }
                 .firstOrNull { it.isFile }
             if (candidate == null) missing += library
             else resolved[library] = candidate.absolutePath
