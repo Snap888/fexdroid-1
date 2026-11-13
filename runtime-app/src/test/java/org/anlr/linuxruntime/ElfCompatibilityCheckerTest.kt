@@ -78,6 +78,24 @@ class ElfCompatibilityCheckerTest {
         }
     }
 
+    @Test fun resolvesDeviceAbsoluteInterpreterPathWithoutDuplicatingRootfs() {
+        val root = Files.createTempDirectory("anlr-compat-device-path-").toFile()
+        try {
+            val loader = File(root, "usr/lib/aarch64-linux-gnu/ld-linux-aarch64.so.1")
+            loader.parentFile.mkdirs()
+            loader.writeText("")
+            File(root, "usr/lib/aarch64-linux-gnu/libc.so.6").writeText("")
+            val deviceAbsoluteInterpreter = File(loader, "").absolutePath
+            val report = ElfCompatibilityChecker.check(
+                elf(interpreter = deviceAbsoluteInterpreter), root, ExecutionBackend.NATIVE_ARM64
+            )
+            assertTrue(report.reasons.toString(), report.compatible)
+            assertEquals(loader.canonicalPath, report.resolvedLibraries["PT_INTERP"])
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
     @Test fun resolvesLib64InterpreterAndRejectsSymlinkEscape() {
         val root = Files.createTempDirectory("anlr-compat-lib64-").toFile()
         val outside = Files.createTempDirectory("anlr-compat-outside-").toFile()
