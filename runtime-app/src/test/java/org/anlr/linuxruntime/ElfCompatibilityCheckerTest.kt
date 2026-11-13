@@ -96,6 +96,27 @@ class ElfCompatibilityCheckerTest {
         }
     }
 
+    @Test fun resolvesDeviceAbsoluteInterpreterThroughActiveRootfsSymlink() {
+        val files = Files.createTempDirectory("anlr-files-").toFile()
+        val releaseRoot = File(files, "runtime/rootfs/releases/r1/rootfs")
+        val activeRoot = File(files, "rootfs")
+        try {
+            val loader = File(releaseRoot, "usr/lib/aarch64-linux-gnu/ld-linux-aarch64.so.1")
+            loader.parentFile.mkdirs()
+            loader.writeText("")
+            File(releaseRoot, "usr/lib/aarch64-linux-gnu/libc.so.6").writeText("")
+            Files.createSymbolicLink(activeRoot.toPath(), releaseRoot.toPath().let { files.toPath().relativize(it) })
+            val interpreter = File(activeRoot, "usr/lib/aarch64-linux-gnu/ld-linux-aarch64.so.1").absolutePath
+            val report = ElfCompatibilityChecker.check(
+                elf(interpreter = interpreter), activeRoot, ExecutionBackend.NATIVE_ARM64
+            )
+            assertTrue(report.reasons.toString(), report.compatible)
+            assertEquals(loader.canonicalPath, report.resolvedLibraries["PT_INTERP"])
+        } finally {
+            files.deleteRecursively()
+        }
+    }
+
     @Test fun resolvesLib64InterpreterAndRejectsSymlinkEscape() {
         val root = Files.createTempDirectory("anlr-compat-lib64-").toFile()
         val outside = Files.createTempDirectory("anlr-compat-outside-").toFile()
